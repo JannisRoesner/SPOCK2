@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 from pathlib import Path
@@ -70,10 +71,8 @@ def effective_ui_scale(ui: UiConfig, window_size: QSize | None = None) -> float:
 def apply_chrome(app: QApplication, theme: UiTheme) -> None:
     """Fusion-Palette + ColorScheme, unabhängig vom OS-Dark-Mode."""
     if theme == "dark":
-        try:
+        with contextlib.suppress(Exception):
             app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
-        except Exception:  # noqa: BLE001
-            pass
         pal = QPalette()
         window = QColor("#1c1c1a")
         base = QColor("#2a2a28")
@@ -96,10 +95,8 @@ def apply_chrome(app: QApplication, theme: UiTheme) -> None:
         app.setPalette(pal)
         return
 
-    try:
+    with contextlib.suppress(Exception):
         app.styleHints().setColorScheme(Qt.ColorScheme.Light)
-    except Exception:  # noqa: BLE001
-        pass
     pal = QPalette()
     window = QColor("#f4f4f0")
     base = QColor("#ffffff")
