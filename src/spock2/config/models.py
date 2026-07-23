@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 StationRole = Literal["kitchen", "counter"]
 PrinterRoleName = Literal["kitchen", "counter", "small"]
 LogFormat = Literal["keyvalue", "json"]
+PrintTransportMode = Literal["auto", "cups", "winspool", "file"]
+UiTheme = Literal["light", "dark"]
 
 
 class RikerConfig(BaseModel):
@@ -42,8 +46,31 @@ class TimeoutsConfig(BaseModel):
 
 
 class PollingConfig(BaseModel):
+    """Poll-Intervalle. ``interval_s`` bleibt als Legacy-Alias (→ beide APIs)."""
+
     interval_s: float = Field(default=3.0, gt=0)
+    riker_interval_s: float = Field(default=3.0, gt=0)
+    picard_interval_s: float = Field(default=3.0, gt=0)
     single_flight: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy_shared_interval(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        raw = dict(data)
+        legacy = raw.get("interval_s", 3.0)
+        if "riker_interval_s" not in raw:
+            raw["riker_interval_s"] = legacy
+        if "picard_interval_s" not in raw:
+            raw["picard_interval_s"] = legacy
+        return raw
+
+    @model_validator(mode="after")
+    def _sync_legacy_interval(self) -> PollingConfig:
+        # Legacy-Feld spiegelt RIKER-Intervall (für ältere Leser / Anzeige).
+        object.__setattr__(self, "interval_s", self.riker_interval_s)
+        return self
 
 
 class BackoffConfig(BaseModel):
@@ -54,8 +81,15 @@ class BackoffConfig(BaseModel):
 
 
 class PrinterConfig(BaseModel):
+    """Druckerrolle → logischer Queue-/Druckername + Profil."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
     role: PrinterRoleName
-    cups_queue: str
+    queue: str = Field(
+        validation_alias=AliasChoices("queue", "cups_queue"),
+        serialization_alias="queue",
+    )
     profile: str
     enabled: bool = True
 
@@ -92,6 +126,7 @@ class PrintConfig(BaseModel):
     auto_print_new_orders: bool = True
     auto_print_new_notes: bool = True
     auto_complete_after_print: bool = False
+    transport: PrintTransportMode = "auto"
     default_copies: int = Field(default=1, ge=1)
     max_attempts: int = Field(default=5, ge=1)
     retry_delay_s: float = Field(default=5.0, ge=0)
@@ -102,6 +137,9 @@ class UiConfig(BaseModel):
     confirm_complete: bool = True
     admin_pin: str = ""
     min_touch_target_px: int = Field(default=56, ge=32)
+    theme: UiTheme = "light"
+    ui_scale: float = Field(default=1.0, ge=0.75, le=1.75)
+    scale_with_window: bool = True
 
 
 class LoggingConfig(BaseModel):
@@ -157,5 +195,9 @@ class AppConfig(BaseModel):
 
 
 def default_state_dir() -> Path:
-    """Standard-Zustandspfad (~/.local/state/spock2)."""
+    """Standard-Zustandspfad (Windows: %LOCALAPPDATA%/spock2, sonst ~/.local/state/spock2)."""
+    if sys.platform == "win32":
+        local = os.environ.get("LOCALAPPDATA")
+        if local:
+            return Path(local) / "spock2"
     return Path.home() / ".local" / "state" / "spock2"

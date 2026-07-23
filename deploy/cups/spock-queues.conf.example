@@ -8,7 +8,7 @@
 # QueueName: spock-kitchen
 # DeviceURI: usb://Star/TSP100?serial=SERIAL_TSP100_KITCHEN
 # DeviceURI (Dev): cups-pdf:/
-# Model: raw   # oder PPD/Filter laut ADR 0007 nach Hardwaretest
+# Model: raw   # oder PPD/Filter nach Hardwaretest
 # Shared: No
 # State: Idle
 # Accepting: Yes

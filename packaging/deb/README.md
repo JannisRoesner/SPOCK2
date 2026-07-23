@@ -1,6 +1,6 @@
 # SPOCK2 als `.deb` bauen
 
-Ziel: Ubuntu **24.04** (Latitude 5285 / Vagrant-VM). Primärlieferung laut ADR 0009.
+Ziel: Ubuntu **24.04** (Build-Host oder Vagrant-VM).
 
 ## Voraussetzungen (Build-Host oder VM)
 

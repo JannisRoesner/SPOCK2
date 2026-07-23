@@ -28,4 +28,4 @@ rpmbuild -ba packaging/rpm/spock2.spec \
 
 - PySide6 und `pycups` können architekturabhängige Wheels brauchen — `BuildArch: noarch` ggf. entfernen.
 - `%license LICENSE` setzt voraus, dass eine `LICENSE`-Datei im Repo liegt.
-- Für Event-Hardware (Latitude 5285) Ubuntu 24.04 + `.deb` bevorzugen.
+- Für typische Event-Kiosks Ubuntu 24.04 + `.deb` bevorzugen.

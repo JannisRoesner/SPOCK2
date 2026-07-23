@@ -86,7 +86,8 @@ class OrderCard(QFrame):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("orderCard")
-        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setFrameShadow(QFrame.Shadow.Plain)
         self._order_id = order.id
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 

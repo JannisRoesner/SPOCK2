@@ -10,6 +10,8 @@ deploy/systemd/spock2.user.service usr/lib/systemd/user/spock2.service
 deploy/kiosk/spock2-session.sh usr/share/spock2/kiosk/
 deploy/kiosk/spock2.desktop usr/share/spock2/kiosk/
 deploy/kiosk/spock2.desktop usr/share/applications/
+src/spock2/ui/resources/spock2_icon_256.png usr/share/pixmaps/spock2.png
+src/spock2/ui/resources/spock2_icon_256.png usr/share/icons/hicolor/256x256/apps/spock2.png
 README.md usr/share/doc/spock2/
 deploy/cups/README.md usr/share/doc/spock2/cups-README.md
 deploy/cups/spock-queues.conf.example usr/share/doc/spock2/

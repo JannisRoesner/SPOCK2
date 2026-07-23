@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer, Slot
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QResizeEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QLabel,
     QMainWindow,
@@ -22,26 +23,24 @@ from spock2.config.models import AppConfig
 from spock2.domain.notes import Note
 from spock2.domain.orders import Order
 from spock2.domain.status import ApiStatus, AppStatus, PrinterStatus
+from spock2.printing.queue_discovery import list_system_queues
 from spock2.services.connection_monitor import ConnectionMonitor
 from spock2.services.note_service import NoteService
 from spock2.services.order_service import OrderService
+from spock2.ui.assets import app_icon, logo_pixmap
 from spock2.ui.dialogs.admin_dialog import AdminDialog
 from spock2.ui.dialogs.complete_confirm import CompleteConfirmDialog
 from spock2.ui.dialogs.note_dialog import NoteDialog
 from spock2.ui.dialogs.note_popup import NotePopup
+from spock2.ui.theme import apply_appearance, load_stylesheet
 from spock2.ui.widgets.order_card import OrderCard
 from spock2.ui.widgets.status_bar import StatusBarWidget
 
 logger = logging.getLogger(__name__)
 
+SettingsApplyCallback = Callable[[AppConfig], str | None]
 
-def load_stylesheet() -> str:
-    path = Path(__file__).resolve().parent / "styles.qss"
-    try:
-        return path.read_text(encoding="utf-8")
-    except OSError as exc:
-        logger.warning("event=stylesheet_missing err=%s", exc)
-        return ""
+__all__ = ["MainWindow", "load_stylesheet"]
 
 
 class MainWindow(QMainWindow):
@@ -55,6 +54,7 @@ class MainWindow(QMainWindow):
         note_service: NoteService | None = None,
         connection_monitor: ConnectionMonitor | None = None,
         orchestrator: Any | None = None,
+        on_settings_apply: SettingsApplyCallback | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -63,12 +63,20 @@ class MainWindow(QMainWindow):
         self._notes = note_service
         self._monitor = connection_monitor
         self._orchestrator = orchestrator
+        self._on_settings_apply = on_settings_apply
         self._cards: dict[int, OrderCard] = {}
         self._offline = False
         self._open_note_popups: set[str] = set()
+        self._appear_timer = QTimer(self)
+        self._appear_timer.setSingleShot(True)
+        self._appear_timer.timeout.connect(self.refresh_appearance)
+        self._last_appear_size: tuple[int, int] | None = None
 
         self.setWindowTitle("SPOCK2")
         self.setMinimumSize(800, 600)
+        icon = app_icon()
+        if not icon.isNull():
+            self.setWindowIcon(icon)
 
         central = QWidget()
         central.setObjectName("centralRoot")
@@ -90,6 +98,12 @@ class MainWindow(QMainWindow):
 
         self._empty = QFrame()
         empty_layout = QVBoxLayout(self._empty)
+        self._empty_logo = QLabel()
+        self._empty_logo.setObjectName("emptyLogo")
+        self._empty_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo = logo_pixmap(small=False, height=120)
+        if not logo.isNull():
+            self._empty_logo.setPixmap(logo)
         self._empty_title = QLabel("Keine offenen Bestellungen")
         self._empty_title.setObjectName("emptyState")
         self._empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -100,6 +114,7 @@ class MainWindow(QMainWindow):
         self._empty_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._empty_hint.setWordWrap(True)
         empty_layout.addStretch(1)
+        empty_layout.addWidget(self._empty_logo)
         empty_layout.addWidget(self._empty_title)
         empty_layout.addWidget(self._empty_hint)
         empty_layout.addStretch(2)
@@ -122,14 +137,29 @@ class MainWindow(QMainWindow):
             self.showMaximized()
         self.raise_()
         self.activateWindow()
-        # region agent log
-        QTimer.singleShot(
-            500,
-            lambda: __import__(
-                "spock2.ui.debug_probe", fromlist=["probe_buttons"]
-            ).probe_buttons(self, location="main_window.py:post_show"),
-        )
-        # endregion
+        QTimer.singleShot(0, self.refresh_appearance)
+
+    def refresh_appearance(self) -> None:
+        """Wendet Theme + Skalierung auf die QApplication an."""
+        app = QApplication.instance()
+        if not isinstance(app, QApplication):
+            return
+        size = self.size()
+        self._last_appear_size = (size.width(), size.height())
+        apply_appearance(app, self._config.ui, window_size=size)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        if not self._config.ui.scale_with_window:
+            return
+        size = event.size()
+        prev = self._last_appear_size
+        if prev is not None:
+            dw = abs(size.width() - prev[0])
+            dh = abs(size.height() - prev[1])
+            if dw < 40 and dh < 40:
+                return
+        self._appear_timer.start(180)
 
     def _build_menu(self) -> None:
         menubar = self.menuBar()
@@ -364,6 +394,8 @@ class MainWindow(QMainWindow):
         AdminDialog.open_admin(
             self._config,
             on_test_print=self._test_print,
+            on_apply=self._on_settings_apply,
+            list_queues=list_system_queues,
             parent=self,
             admin_pin=self._config.ui.admin_pin,
         )

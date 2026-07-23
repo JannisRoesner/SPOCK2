@@ -4,21 +4,25 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import os
 import sys
+from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QThread, QTimer, Slot
+from PySide6.QtCore import Q_ARG, QMetaObject, QObject, Qt, QThread, QTimer, Slot
 from PySide6.QtWidgets import QApplication
 
 from spock2.api.backoff import ExponentialBackoff
 from spock2.api.errors import CupsUnavailable
 from spock2.api.picard import PicardClient
 from spock2.api.riker import RikerClient
-from spock2.config.loader import load_config
+from spock2.config.loader import (
+    default_writable_config_path,
+    load_config_result,
+    save_config,
+)
 from spock2.config.models import AppConfig
 from spock2.domain.notes import Note
 from spock2.domain.orders import Order
-from spock2.domain.print_job import PrintJobStatus
+from spock2.domain.print_job import PrintJob, PrintJobStatus, SourceType
 from spock2.domain.status import ApiStatus, ConnectionState
 from spock2.logging_setup import setup_logging
 from spock2.persistence import print_jobs
@@ -29,11 +33,14 @@ from spock2.printing.file_transport import FileTransport
 from spock2.printing.orchestrator import PrintOrchestrator
 from spock2.printing.renderer import ReceiptRenderer
 from spock2.printing.transport import PrintTransport
+from spock2.printing.winspool_transport import WinSpoolTransport, winspool_available
 from spock2.services.connection_monitor import ConnectionMonitor
 from spock2.services.note_service import NoteService
 from spock2.services.order_service import OrderService
 from spock2.services.printer_health import PrinterHealth
-from spock2.ui.main_window import MainWindow, load_stylesheet
+from spock2.ui.assets import app_icon
+from spock2.ui.main_window import MainWindow
+from spock2.ui.theme import apply_appearance
 from spock2.workers.cups_status_worker import CupsStatusWorker
 from spock2.workers.note_poll_worker import NotePollWorker
 from spock2.workers.poll_worker import PollWorker
@@ -43,15 +50,42 @@ logger = logging.getLogger(__name__)
 
 
 def create_transport(config: AppConfig) -> PrintTransport:
-    """FileTransport unter Windows / ohne CUPS; sonst CupsTransport."""
-    use_cups = sys.platform.startswith("linux") and cups_available()
-    if use_cups:
+    """Wählt Transport laut ``print.transport`` (auto/cups/winspool/file)."""
+    mode = config.print.transport
+    if mode == "file":
+        transport: PrintTransport = FileTransport()
+        logger.info(
+            "event=transport_file reason=config dir=%s",
+            getattr(transport, "output_dir", "?"),
+        )
+        return transport
+
+    want_cups = mode == "cups" or (
+        mode == "auto" and sys.platform.startswith("linux") and cups_available()
+    )
+    if want_cups:
         try:
-            transport: PrintTransport = CupsTransport()
-            logger.info("event=transport_cups")
-            return transport
+            cups: PrintTransport = CupsTransport()
+            logger.info("event=transport_cups mode=%s", mode)
+            return cups
         except CupsUnavailable as exc:
+            if mode == "cups":
+                raise
             logger.warning("event=cups_fallback_file err=%s", exc)
+
+    want_winspool = mode == "winspool" or (
+        mode == "auto" and sys.platform == "win32" and winspool_available()
+    )
+    if want_winspool:
+        try:
+            win: PrintTransport = WinSpoolTransport()
+            logger.info("event=transport_winspool mode=%s", mode)
+            return win
+        except CupsUnavailable as exc:
+            if mode == "winspool":
+                raise
+            logger.warning("event=winspool_fallback_file err=%s", exc)
+
     transport = FileTransport()
     logger.info("event=transport_file dir=%s", getattr(transport, "output_dir", "?"))
     return transport
@@ -87,9 +121,16 @@ def create_picard(config: AppConfig) -> PicardClient | None:
 class ApplicationController(QObject):
     """Hält Worker-Threads und verdrahtet Services ↔ UI."""
 
-    def __init__(self, config: AppConfig, parent: QObject | None = None) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        *,
+        config_path: Path | None = None,
+        parent: QObject | None = None,
+    ) -> None:
         super().__init__(parent)
         self.config = config
+        self.config_path = config_path
         self.db_path = config.db.resolved_path()
         migrate(self.db_path)
 
@@ -106,7 +147,7 @@ class ApplicationController(QObject):
         )
 
         role_queues = {
-            p.role: p.cups_queue
+            p.role: p.queue
             for p in config.printers.values()
             if p.enabled
         }
@@ -136,6 +177,7 @@ class ApplicationController(QObject):
         self._drain_timer: QTimer | None = None
         self._cups_timer: QTimer | None = None
         self._health_timer: QTimer | None = None
+        self._auto_complete_inflight: set[int] = set()
 
         self.window = MainWindow(
             config,
@@ -143,9 +185,11 @@ class ApplicationController(QObject):
             note_service=self.note_service,
             connection_monitor=self.monitor,
             orchestrator=self.orchestrator,
+            on_settings_apply=self.apply_settings,
         )
 
         self.printer_health.statuses_changed.connect(self.window.set_printer_statuses)
+        self.order_service.complete_finished.connect(self._on_complete_finished_clear)
         self._start_workers()
         self._refresh_pending_count()
 
@@ -162,7 +206,7 @@ class ApplicationController(QObject):
         poll_thread = QThread(self)
         self._poll_worker = PollWorker(
             self.riker,
-            interval_s=cfg.polling.interval_s,
+            interval_s=cfg.polling.riker_interval_s,
             backoff=backoff,
         )
         self._poll_worker.moveToThread(poll_thread)
@@ -184,7 +228,7 @@ class ApplicationController(QObject):
             note_thread = QThread(self)
             self._note_poll_worker = NotePollWorker(
                 self.picard,
-                interval_s=cfg.polling.interval_s,
+                interval_s=cfg.polling.picard_interval_s,
                 backoff=note_backoff,
             )
             self._note_poll_worker.moveToThread(note_thread)
@@ -239,6 +283,125 @@ class ApplicationController(QObject):
         self._health_timer.start()
         self._refresh_printer_health()
 
+    def apply_settings(self, new: AppConfig) -> str | None:
+        """Speichert TOML und wendet laufzeitfähige Einstellungen an.
+
+        Returns:
+            Optionale Hinweis-Meldung für den Admin-Dialog (z. B. Neustart).
+        """
+        old = self.config
+        transport_changed = old.print.transport != new.print.transport
+        picard_enable_changed = old.picard.enabled != new.picard.enabled
+        need_restart = transport_changed or (
+            picard_enable_changed
+            and new.picard.enabled
+            and self._note_poll_worker is None
+        )
+
+        # In-place mutieren (Orchestrator/PrintWorker halten dieselbe Referenz).
+        old.riker.base_url = new.riker.base_url
+        old.riker.connect_timeout_s = new.riker.connect_timeout_s
+        old.riker.read_timeout_s = new.riker.read_timeout_s
+        old.picard.enabled = new.picard.enabled
+        old.picard.base_url = new.picard.base_url
+        old.picard.session_id = new.picard.session_id
+        old.polling.riker_interval_s = new.polling.riker_interval_s
+        old.polling.picard_interval_s = new.polling.picard_interval_s
+        old.polling.interval_s = new.polling.riker_interval_s
+        old.print.auto_print_new_orders = new.print.auto_print_new_orders
+        old.print.auto_print_new_notes = new.print.auto_print_new_notes
+        old.print.auto_complete_after_print = new.print.auto_complete_after_print
+        old.print.transport = new.print.transport
+        old.ui.theme = new.ui.theme
+        old.ui.ui_scale = new.ui.ui_scale
+        old.ui.scale_with_window = new.ui.scale_with_window
+        old.ui.min_touch_target_px = new.ui.min_touch_target_px
+        old.ui.fullscreen = new.ui.fullscreen
+        old.ui.confirm_complete = new.ui.confirm_complete
+        old.ui.admin_pin = new.ui.admin_pin
+        old.printers.clear()
+        old.printers.update(
+            {name: p.model_copy(deep=True) for name, p in new.printers.items()}
+        )
+
+        path = self.config_path or default_writable_config_path()
+        try:
+            self.config_path = save_config(path, old)
+            logger.info("event=config_saved path=%s", self.config_path)
+        except OSError as exc:
+            logger.exception("event=config_save_failed")
+            return f"Speichern fehlgeschlagen: {exc}"
+
+        self._rebind_api_clients()
+        self._apply_poll_intervals()
+        self._refresh_printer_role_queues()
+        self.window.refresh_appearance()
+
+        hints: list[str] = ["Einstellungen gespeichert."]
+        if need_restart:
+            hints.append(
+                "Transport- oder PICARD-Aktivierung erfordert einen Neustart der App."
+            )
+        return " ".join(hints)
+
+    def _rebind_api_clients(self) -> None:
+        old_riker = self.riker
+        self.riker = create_riker(self.config)
+        self.order_service.set_client(self.riker)
+        if self._poll_worker is not None:
+            # Q_ARG(object, ...) ist in PySide6 nicht registriert → RuntimeError.
+            # Pending-Attribut + parameterloser Slot mit BlockingQueuedConnection.
+            self._poll_worker._pending_client = self.riker
+            QMetaObject.invokeMethod(
+                self._poll_worker,
+                "apply_pending_client",
+                Qt.ConnectionType.BlockingQueuedConnection,
+            )
+        with contextlib.suppress(Exception):
+            old_riker.close()
+
+        old_picard = self.picard
+        self.picard = create_picard(self.config)
+        self.note_service.set_client(
+            self.picard,
+            enabled=self.config.picard.enabled and self.picard is not None,
+        )
+        if self._note_poll_worker is not None and self.picard is not None:
+            self._note_poll_worker._pending_client = self.picard
+            QMetaObject.invokeMethod(
+                self._note_poll_worker,
+                "apply_pending_client",
+                Qt.ConnectionType.BlockingQueuedConnection,
+            )
+        if old_picard is not None:
+            with contextlib.suppress(Exception):
+                old_picard.close()
+
+    def _apply_poll_intervals(self) -> None:
+        if self._poll_worker is not None:
+            QMetaObject.invokeMethod(
+                self._poll_worker,
+                "set_interval",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(float, float(self.config.polling.riker_interval_s)),
+            )
+        if self._note_poll_worker is not None:
+            QMetaObject.invokeMethod(
+                self._note_poll_worker,
+                "set_interval",
+                Qt.ConnectionType.QueuedConnection,
+                Q_ARG(float, float(self.config.polling.picard_interval_s)),
+            )
+
+    def _refresh_printer_role_queues(self) -> None:
+        role_queues = {
+            p.role: p.queue
+            for p in self.config.printers.values()
+            if p.enabled
+        }
+        self.printer_health.configure_roles(role_queues)
+        self._refresh_printer_health()
+
     @Slot(object)
     def _on_poll_status(self, status: object) -> None:
         if isinstance(status, ApiStatus):
@@ -278,8 +441,38 @@ class ApplicationController(QObject):
         self._refresh_pending_count()
 
     @Slot(object)
-    def _on_job_updated(self, _job: object) -> None:
+    def _on_job_updated(self, job: object) -> None:
         self._refresh_pending_count()
+        if not isinstance(job, PrintJob):
+            return
+        if not self.config.print.auto_complete_after_print:
+            return
+        if job.source_type != SourceType.RIKER_ORDER:
+            return
+        if job.status != PrintJobStatus.COMPLETED:
+            return
+        try:
+            order_id = int(job.source_id)
+        except ValueError:
+            logger.warning(
+                "event=auto_complete_bad_source_id source_id=%s", job.source_id
+            )
+            return
+        if order_id in self._auto_complete_inflight:
+            return
+        if self.order_service.is_completing(order_id):
+            return
+        self._auto_complete_inflight.add(order_id)
+        logger.info("event=auto_complete_after_print order_id=%s", order_id)
+        started = self.order_service.complete_order(order_id)
+        if not started:
+            self._auto_complete_inflight.discard(order_id)
+
+    @Slot(int, bool, object)
+    def _on_complete_finished_clear(
+        self, order_id: int, _ok: bool, _error: object
+    ) -> None:
+        self._auto_complete_inflight.discard(order_id)
 
     @Slot(str)
     def _on_print_error(self, message: str) -> None:
@@ -346,7 +539,8 @@ class ApplicationController(QObject):
 def main(argv: list[str] | None = None) -> int:
     """Lädt Config, Logging, DB und startet die PySide6-UI."""
     _ = argv  # reserved for future CLI flags
-    config = load_config()
+    loaded = load_config_result()
+    config = loaded.config
     setup_logging(
         level=config.logging.level,
         file_path=config.logging.resolved_file_path(),
@@ -356,7 +550,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     logger.info("event=app_start version=%s", __import__("spock2").__version__)
     logger.info(
-        "event=config_loaded riker=%s picard_enabled=%s station_role=%s fullscreen=%s",
+        "event=config_loaded path=%s riker=%s picard_enabled=%s station_role=%s fullscreen=%s",
+        loaded.path,
         config.riker.base_url,
         config.picard.enabled,
         config.routing.station_role,
@@ -368,36 +563,14 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("SPOCK2")
     app.setOrganizationName("SPOCK2")
     app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
+    icon = app_icon()
+    if not icon.isNull():
+        app.setWindowIcon(icon)
 
-    qss = load_stylesheet()
-    # region agent log
-    from spock2.ui.debug_probe import agent_log
+    # Theme vor dem Fenster (Screen-basierte Scale); MainWindow skaliert nach Show nach.
+    apply_appearance(app, config.ui)
 
-    agent_log(
-        "app.py:main",
-        "pre_stylesheet",
-        {
-            "qtStyle": app.style().objectName(),
-            "qssLen": len(qss),
-            "qssLoaded": bool(qss),
-            "platform": sys.platform,
-            "qtQpaPlatform": os.environ.get("QT_QPA_PLATFORM", ""),
-        },
-        hypothesis_id="A,D",
-    )
-    # endregion
-    if qss:
-        app.setStyleSheet(qss)
-    # region agent log
-    agent_log(
-        "app.py:main",
-        "post_stylesheet",
-        {"qtStyle": app.style().objectName(), "qssLen": len(qss)},
-        hypothesis_id="A,B",
-    )
-    # endregion
-
-    controller = ApplicationController(config)
+    controller = ApplicationController(config, config_path=loaded.path)
     app.aboutToQuit.connect(controller.shutdown)
 
     # Window already shown in MainWindow.__init__ via fullscreen/maximized

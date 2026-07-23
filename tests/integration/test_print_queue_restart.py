@@ -19,12 +19,12 @@ def _config() -> AppConfig:
         printers={
             "kitchen": PrinterConfig(
                 role="kitchen",
-                cups_queue="spock-kitchen",
+                queue="spock-kitchen",
                 profile="tsp100",
             ),
             "counter": PrinterConfig(
                 role="counter",
-                cups_queue="spock-counter",
+                queue="spock-counter",
                 profile="tsp100",
             ),
         },

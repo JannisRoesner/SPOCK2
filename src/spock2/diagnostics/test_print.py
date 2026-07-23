@@ -15,6 +15,7 @@ from spock2.printing.file_transport import FileTransport
 from spock2.printing.orchestrator import PrintOrchestrator
 from spock2.printing.profiles import get_profile
 from spock2.printing.renderer import ReceiptRenderer
+from spock2.printing.winspool_transport import WinSpoolTransport, winspool_available
 from spock2.workers.print_worker import PrintWorker
 
 
@@ -25,7 +26,12 @@ def _build_transport(prefer_file: bool, file_out: str | None):
         try:
             return CupsTransport(), "cups"
         except Exception as exc:  # noqa: BLE001
-            print(f"CUPS nicht nutzbar ({exc}) – Fallback FileTransport.", file=sys.stderr)
+            print(f"CUPS nicht nutzbar ({exc}) – Fallback weiter.", file=sys.stderr)
+    if winspool_available():
+        try:
+            return WinSpoolTransport(), "winspool"
+        except Exception as exc:  # noqa: BLE001
+            print(f"WinSpool nicht nutzbar ({exc}) – Fallback FileTransport.", file=sys.stderr)
     return FileTransport(file_out), "file"
 
 
@@ -89,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     if kind == "file" and isinstance(transport, FileTransport):
         print(f"Ausgabe: {transport.output_dir}")
     if printer:
-        print(f"Queue: {printer.cups_queue}  Profil: {profile_name}")
+        print(f"Queue: {printer.queue}  Profil: {profile_name}")
     else:
         print(f"Kein Printer-Config für Rolle {role.value} – Fallback-Queue spock-{role.value}")
 

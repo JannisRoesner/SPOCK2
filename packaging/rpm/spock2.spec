@@ -56,6 +56,10 @@ install -D -m 0644 deploy/kiosk/spock2.desktop \
   %{buildroot}%{_datadir}/spock2/kiosk/spock2.desktop
 install -D -m 0644 deploy/kiosk/spock2.desktop \
   %{buildroot}%{_datadir}/applications/spock2.desktop
+install -D -m 0644 src/spock2/ui/resources/spock2_icon_256.png \
+  %{buildroot}%{_datadir}/pixmaps/spock2.png
+install -D -m 0644 src/spock2/ui/resources/spock2_icon_256.png \
+  %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/spock2.png
 
 %files
 %license LICENSE
@@ -70,6 +74,8 @@ install -D -m 0644 deploy/kiosk/spock2.desktop \
 %{_userunitdir}/spock2.service
 %{_datadir}/spock2/
 %{_datadir}/applications/spock2.desktop
+%{_datadir}/pixmaps/spock2.png
+%{_datadir}/icons/hicolor/256x256/apps/spock2.png
 
 %changelog
 * Thu Jul 23 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.0-1

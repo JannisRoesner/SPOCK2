@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QSizePolicy, QWidget
 
 from spock2.domain.status import ApiStatus, AppStatus, ConnectionState, PrinterStatus
+from spock2.ui.assets import logo_pixmap
 
 
 def _fmt_time(value: datetime | None) -> str:
@@ -50,6 +51,15 @@ class StatusBarWidget(QFrame):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(4)
+
+        self._logo = QLabel()
+        self._logo.setObjectName("statusLogo")
+        self._logo.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        brand = logo_pixmap(small=True, height=36)
+        if not brand.isNull():
+            self._logo.setPixmap(brand)
+            self._logo.setFixedHeight(40)
+            layout.addWidget(self._logo)
 
         self._riker = QLabel("RIKER: —")
         self._riker.setObjectName("statusLabel")

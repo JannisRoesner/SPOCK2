@@ -91,6 +91,11 @@ class OrderService(QObject):
     def is_completing(self, order_id: int) -> bool:
         return order_id in self._completing_ids
 
+    def set_client(self, riker_client: Any) -> None:
+        """Tauscht den RIKER-Client (inkl. Complete-Worker)."""
+        self._riker = riker_client
+        self._complete_worker._riker = riker_client
+
     def get_order(self, order_id: int) -> Order | None:
         for order in self._orders:
             if order.id == order_id:

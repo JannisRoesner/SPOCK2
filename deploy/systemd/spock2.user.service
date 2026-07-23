@@ -1,7 +1,7 @@
-# SPOCK2 — systemd User-Unit (empfohlen für Latitude-Kiosk)
+# SPOCK2 — systemd User-Unit (empfohlen für Touch-Kiosk)
 #
 # Läuft im Kontext der grafischen Login-Session (DISPLAY, DBus, Audio).
-# After=graphical-session.target + cups + Netzwerk (ADR 0009).
+# After=graphical-session.target + cups + Netzwerk.
 #
 # Installation:
 #   mkdir -p ~/.config/systemd/user

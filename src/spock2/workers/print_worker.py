@@ -101,15 +101,10 @@ class PrintWorker(QObject):
         profile = get_profile(job.profile_name)
         payload = json.loads(job.payload_json)
         text = self._render_payload(job, payload, profile)
-        data = self.renderer.render_to_bytes(text, profile)
-
-        # pos5890k optional ESC/POS, wenn Profil escpos-Capability und Queue raw
-        if (
-            profile.name == "pos5890k"
-            and "escpos" in profile.capabilities
-            and self._prefer_escpos(job)
-        ):
+        if self._prefer_escpos(profile):
             data = self.renderer.render_escpos(text, profile)
+        else:
+            data = self.renderer.render_to_bytes(text, profile)
 
         queue = self._queue_for_role(job.target_role)
         title = f"SPOCK2 {job.source_type.value} {job.source_id}"
@@ -174,10 +169,17 @@ class PrintWorker(QObject):
     def _queue_for_role(self, role: PrinterRole) -> str:
         printer = self.config.printer_for_role(role.value)  # type: ignore[arg-type]
         if printer is not None:
-            return printer.cups_queue
+            return printer.queue
         return f"spock-{role.value}"
 
-    def _prefer_escpos(self, job: PrintJob) -> bool:
-        """ESC/POS nur wenn Profil explizit escpos und nicht cups_text-only."""
-        _ = job
-        return False  # CUPS-Text ist Default; ESC/POS opt-in später
+    def _prefer_escpos(self, profile: Any) -> bool:
+        """ESC/POS für WinSpool; sonst wenn Profil escpos und nicht CUPS-Text."""
+        from spock2.printing.cups_transport import CupsTransport
+        from spock2.printing.winspool_transport import WinSpoolTransport
+
+        if isinstance(self.transport, WinSpoolTransport):
+            return True
+        if isinstance(self.transport, CupsTransport):
+            return False
+        caps = getattr(profile, "capabilities", ()) or ()
+        return "escpos" in caps

@@ -34,8 +34,11 @@ read_timeout_s = 10.0
 cups_job_timeout_s = 120.0
 
 [polling]
-# Intervall bei erfolgreichem Poll (Sekunden)
+# Legacy-Alias: wenn riker/picard-Intervalle fehlen, gelten sie für beide APIs
 interval_s = 3.0
+# Getrennte Intervalle (Sekunden) bei erfolgreichem Poll
+riker_interval_s = 3.0
+picard_interval_s = 3.0
 # Single-Flight: kein paralleles Poll (immer true in V1)
 single_flight = true
 
@@ -49,19 +52,22 @@ reset_on_success = true
 
 [printers.kitchen]
 role = "kitchen"
-cups_queue = "spock-kitchen"
+# queue = CUPS-Queue-Name (Linux) bzw. exakter Windows-Druckername (Geräte und Drucker).
+# Ein-Drucker-Betrieb: denselben Namen in kitchen/counter/small eintragen (Admin-Dropdown).
+queue = "spock-kitchen"
 profile = "tsp100"
 enabled = true
 
 [printers.counter]
 role = "counter"
-cups_queue = "spock-counter"
+# siehe [printers.kitchen] – gleicher queue-Name = ein physisches Gerät
+queue = "spock-counter"
 profile = "tsp100"
 enabled = true
 
 [printers.small]
 role = "small"
-cups_queue = "spock-small"
+queue = "spock-small"
 profile = "pos5890k"
 enabled = true
 
@@ -100,6 +106,8 @@ auto_print_new_orders = true
 auto_print_new_notes = true
 # Druck ≠ Erledigt: kein automatisches Complete nach Druck
 auto_complete_after_print = false
+# Transport: auto (Linux→CUPS, Windows→WinSpool, sonst Datei) | cups | winspool | file
+transport = "auto"
 default_copies = 1
 max_attempts = 5
 # Sekunden zwischen Retries eines failed→pending Jobs
@@ -113,6 +121,12 @@ confirm_complete = true
 admin_pin = ""
 # Minimale Touch-Target-Höhe in px
 min_touch_target_px = 56
+# Farbschema: light | dark
+theme = "light"
+# Zusätzliche UI-Skalierung (0.75–1.75), multipliziert mit Fensterfaktor
+ui_scale = 1.0
+# Schriften/Touch an Fenstergröße anpassen (Basis 1280×800)
+scale_with_window = true
 
 [logging]
 level = "INFO"

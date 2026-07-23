@@ -5,17 +5,19 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "spock2"
 version = "0.1.0"
-description = "SPOCK2 – modularer PySide6/Linux-Kiosk-Client für RIKER-Bestellungen und CUPS-Druck"
+description = "SPOCK2 – modularer PySide6-Kiosk-Client für RIKER-Bestellungen und CUPS-/WinSpool-Druck"
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.12"
 authors = [{ name = "SPOCK2 Contributors" }]
-keywords = ["riker", "picard", "cups", "kiosk", "pos", "kitchen"]
+keywords = ["riker", "picard", "cups", "winspool", "kiosk", "pos", "kitchen"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: X11 Applications :: Qt",
+    "Environment :: Win32 (MS Windows)",
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
@@ -27,17 +29,21 @@ dependencies = [
     "httpx>=0.27",
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
+    "tomli-w>=1.0",
 ]
 
 [project.optional-dependencies]
 cups = [
     "pycups>=2.0.1; sys_platform == 'linux'",
 ]
+winspool = [
+    "pywin32>=306; sys_platform == 'win32'",
+]
 dev = [
     "pytest>=8.0",
     "pytest-httpx>=0.30",
     "ruff>=0.4",
-    "spock2[cups]",
+    "spock2[cups,winspool]",
 ]
 
 [project.scripts]
@@ -53,7 +59,12 @@ Documentation = "https://github.com/JannisRoesner/SPOCK2#readme"
 where = ["src"]
 
 [tool.setuptools.package-data]
-spock2 = ["py.typed", "ui/styles.qss", "ui/resources/.gitkeep"]
+spock2 = [
+    "py.typed",
+    "ui/styles.qss",
+    "ui/styles_dark.qss",
+    "ui/resources/*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

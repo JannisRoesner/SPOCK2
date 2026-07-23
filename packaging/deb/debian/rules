@@ -47,6 +47,12 @@ override_dh_auto_install:
 	install -d $(CURDIR)/debian/spock2/usr/share/applications
 	install -m 0644 $(CURDIR)/deploy/kiosk/spock2.desktop \
 		$(CURDIR)/debian/spock2/usr/share/applications/
+	install -d $(CURDIR)/debian/spock2/usr/share/pixmaps
+	install -m 0644 $(CURDIR)/src/spock2/ui/resources/spock2_icon_256.png \
+		$(CURDIR)/debian/spock2/usr/share/pixmaps/spock2.png
+	install -d $(CURDIR)/debian/spock2/usr/share/icons/hicolor/256x256/apps
+	install -m 0644 $(CURDIR)/src/spock2/ui/resources/spock2_icon_256.png \
+		$(CURDIR)/debian/spock2/usr/share/icons/hicolor/256x256/apps/spock2.png
 	install -d $(CURDIR)/debian/spock2/usr/share/doc/spock2
 	install -m 0644 $(CURDIR)/README.md \
 		$(CURDIR)/debian/spock2/usr/share/doc/spock2/

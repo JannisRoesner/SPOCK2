@@ -127,6 +127,19 @@ class NoteService(QObject):
     def enabled(self) -> bool:
         return self._enabled
 
+    def set_client(self, picard_client: Any | None, *, enabled: bool | None = None) -> None:
+        """Aktualisiert PICARD-Client; Action-Worker nur wenn bereits gestartet."""
+        self._picard = picard_client
+        if enabled is not None:
+            self._enabled = bool(enabled) and picard_client is not None
+        elif picard_client is None:
+            self._enabled = False
+        if self._worker is not None and picard_client is not None:
+            self._worker._picard = picard_client
+        if not self._enabled:
+            self._api_status.mark_error("PICARD deaktiviert", kind="disabled")
+            self.connection_changed.emit(self.api_status)
+
     @property
     def notes(self) -> list[Note]:
         return list(self._notes)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -30,8 +31,13 @@ class NotePopup(QDialog):
         self._note_id = note.id
 
         root = QVBoxLayout(self)
-        frame_layout = QVBoxLayout()
-        # Visueller Rahmen über Stylesheet auf Dialog-Kind
+        frame = QFrame()
+        frame.setObjectName("notePopupFrame")
+        frame.setFrameShape(QFrame.Shape.NoFrame)
+        frame_layout = QVBoxLayout(frame)
+        frame_layout.setContentsMargins(20, 16, 20, 16)
+        frame_layout.setSpacing(12)
+
         banner = QLabel("Neuer Zettel")
         banner.setObjectName("notePopupTitle")
         banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -58,7 +64,7 @@ class NotePopup(QDialog):
         body.setAlignment(Qt.AlignmentFlag.AlignCenter)
         frame_layout.addWidget(body, stretch=1)
 
-        root.addLayout(frame_layout)
+        root.addWidget(frame, stretch=1)
 
         buttons = QHBoxLayout()
         close_btn = QPushButton("Schließen (erledigt)")

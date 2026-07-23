@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from spock2.api.backoff import ExponentialBackoff
 from spock2.api.errors import SpockError
@@ -80,6 +80,26 @@ class NotePollWorker(QObject):
     def stop_polling(self) -> None:
         self._running = False
         self._timer.stop()
+
+    @Slot(float)
+    def set_interval(self, interval_s: float) -> None:
+        """Aktualisiert das Erfolgs-Intervall (im Worker-Thread aufrufen)."""
+        self._interval_s = max(0.1, float(interval_s))
+        if self._running and not self._in_flight:
+            self._timer.setInterval(max(1, int(self._interval_s * 1000)))
+
+    @Slot(object)
+    def set_client(self, client: object) -> None:
+        """Tauscht den PICARD-Client zur Laufzeit."""
+        if isinstance(client, PicardClient):
+            self._client = client
+
+    @Slot()
+    def apply_pending_client(self) -> None:
+        """Übernimmt ``_pending_client`` (thread-sicher via BlockingQueuedConnection)."""
+        client = getattr(self, "_pending_client", None)
+        self._pending_client = None
+        self.set_client(client)
 
     def poll_once(self) -> None:
         if not self._client.enabled:

@@ -1,6 +1,6 @@
 # CUPS-Queues für SPOCK2
 
-SPOCK2 kennt nur logische Queue-Namen (ADR 0001 / 0005):
+SPOCK2 kennt nur logische Queue-Namen:
 
 | Rolle    | CUPS-Queue       | Typisches Gerät   |
 |----------|------------------|-------------------|
@@ -8,7 +8,7 @@ SPOCK2 kennt nur logische Queue-Namen (ADR 0001 / 0005):
 | counter  | `spock-counter`  | Star TSP100 80 mm |
 | small    | `spock-small`    | POS 5890K 58 mm   |
 
-Die App speichert keine `/dev/*`-Pfade — nur Queue-Namen in der TOML (`cups_queue`).
+Die App speichert keine `/dev/*`-Pfade — nur Queue-Namen in der TOML (`queue`, Alias `cups_queue`).
 
 ## Voraussetzungen
 
@@ -59,7 +59,7 @@ udevadm info -a -n /dev/usb/lp0 | grep ATTRS{serial}
 spock2-probe-usb
 ```
 
-Beispiel Raw-Queue mit Serial in der URI (Treiber/PPD je Hardware anpassen — ADR 0007):
+Beispiel Raw-Queue mit Serial in der URI (Treiber/PPD je Hardware anpassen):
 
 ```bash
 # Platzhalter SERIAL_TSP100_KITCHEN ersetzen
@@ -110,7 +110,7 @@ In `/etc/spock2/spock2.toml` (oder `SPOCK2_CONFIG`):
 
 ```toml
 [printers.kitchen]
-cups_queue = "spock-kitchen"
+queue = "spock-kitchen"
 # …
 ```
 

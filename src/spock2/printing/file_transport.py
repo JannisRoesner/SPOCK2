@@ -1,4 +1,4 @@
-"""Datei-Transport für Windows/Dev (kein CUPS nötig)."""
+"""Datei-Transport für Windows/Dev (kein CUPS/WinSpool nötig)."""
 
 from __future__ import annotations
 
@@ -48,7 +48,6 @@ class FileTransport:
         filename = f"{ts}_{safe_queue}_{job_id}_{safe_title or 'job'}.txt"
         path = self.output_dir / filename
         path.write_bytes(data)
-        # Begleit-Meta
         meta = path.with_suffix(".meta")
         meta.write_text(
             f"queue={queue_name}\njob_id={job_id}\ntitle={title}\nbytes={len(data)}\n",
@@ -58,7 +57,6 @@ class FileTransport:
 
     def get_job_state(self, job_id: int) -> str:
         with self._lock:
-            # Sofort completed (Dev-Semantik)
             if job_id in self._jobs:
                 return "completed"
             return "completed"
