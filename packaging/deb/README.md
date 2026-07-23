@@ -85,4 +85,4 @@ systemctl --user enable --now spock2.service
 - `pycups` / native CUPS-Libs: ggf. `python3-cups` aus Ubuntu nutzen oder Pip-Extra `[cups]` im Build berücksichtigen.
 - Version in `pyproject.toml` und `debian/changelog` synchron halten.
 
-Siehe auch: `deploy/cups/README.md`, `docs/adr/0009-packaging-systemd-kiosk.md`.
+Siehe auch: `deploy/cups/README.md`.

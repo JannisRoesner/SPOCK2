@@ -60,3 +60,7 @@ desktop.ini
 *.deb
 *.rpm
 *.AppImage
+artifacts/
+
+# Private / local-only docs (ADRs etc.)
+docs/
