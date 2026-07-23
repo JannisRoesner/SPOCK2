@@ -17,6 +17,11 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Install system deps (pycups)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcups2-dev
+
       - name: Install package (dev)
         run: pip install -e ".[dev]"
 
