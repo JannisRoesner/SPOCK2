@@ -1,0 +1,6 @@
+spock2 (0.1.0-1) UNRELEASED; urgency=medium
+
+  * Initial packaging for Ubuntu 24.04.
+  * Ships spock2 binary, example config, udev rules, systemd units, kiosk helpers.
+
+ -- SPOCK2 Contributors <spock2@localhost>  Thu, 23 Jul 2026 14:00:00 +0200

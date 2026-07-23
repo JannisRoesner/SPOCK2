@@ -1,0 +1,51 @@
+# SPOCK2 udev-Regeln: stabile Symlinks für Thermodrucker
+#
+# Ziel: /dev/spock-{kitchen,counter,small} bleibt nach Replug erhalten.
+# Primär: by-serial (Vertauschungsschutz). Fallback: by-path (physischer Port).
+#
+# Serials auslesen (Gerät angesteckt):
+#   udevadm info -a -n /dev/usb/lp0 | grep -E 'ATTRS\{(serial|idVendor|idProduct)\}'
+# oder:
+#   spock2-probe-usb
+#
+# Platzhalter SERIAL_* / DEVPATH_* vor dem Deploy ersetzen.
+# Nach Änderung: sudo udevadm control --reload-rules && sudo udevadm trigger
+#
+# Hinweis: CUPS-Queues sollten idealerweise serial=… in der Device-URI nutzen
+# (siehe deploy/cups/). Diese Symlinks sind Fallback und für Diagnose hilfreich.
+
+# ---------------------------------------------------------------------------
+# Variante A — by-serial (bevorzugt)
+# Ersetzt SERIAL_TSP100_KITCHEN usw. durch echte USB-Serialnummern.
+# ---------------------------------------------------------------------------
+
+# Star TSP100 — Küche → /dev/spock-kitchen
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0519", ATTRS{serial}=="SERIAL_TSP100_KITCHEN", SYMLINK+="spock-kitchen", MODE="0660", GROUP="lp", TAG+="uaccess"
+KERNEL=="lp*", SUBSYSTEM=="usb", ATTRS{serial}=="SERIAL_TSP100_KITCHEN", SYMLINK+="spock-kitchen", MODE="0660", GROUP="lp"
+
+# Star TSP100 — Theke → /dev/spock-counter
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0519", ATTRS{serial}=="SERIAL_TSP100_COUNTER", SYMLINK+="spock-counter", MODE="0660", GROUP="lp", TAG+="uaccess"
+KERNEL=="lp*", SUBSYSTEM=="usb", ATTRS{serial}=="SERIAL_TSP100_COUNTER", SYMLINK+="spock-counter", MODE="0660", GROUP="lp"
+
+# POS 5890K — Kleinbon → /dev/spock-small
+# idVendor/idProduct je nach Chip anpassen (Beispiel: 0483 / 5740 o. ä.)
+SUBSYSTEM=="usb", ATTRS{serial}=="SERIAL_POS5890K_SMALL", SYMLINK+="spock-small", MODE="0660", GROUP="lp", TAG+="uaccess"
+KERNEL=="lp*", SUBSYSTEM=="usb", ATTRS{serial}=="SERIAL_POS5890K_SMALL", SYMLINK+="spock-small", MODE="0660", GROUP="lp"
+
+# ---------------------------------------------------------------------------
+# Variante B — by-path (Fallback, wenn Serial fehlt oder identisch)
+# DEVPATH_* = physischer USB-Pfad, z. B. aus:
+#   udevadm info -q path -n /dev/usb/lp0
+# Beispiel-Kernelsymlink-Ziel oft unter /dev/usb/lp*
+# Kabel mit Labels kennzeichnen (Küche / Theke / Klein)!
+# ---------------------------------------------------------------------------
+
+# KERNELS=="1-1.2" o. ä. — Platzhalter ersetzen, nur EINE Variante (A oder B) aktiv lassen.
+# KERNEL=="lp*", KERNELS=="DEVPATH_KITCHEN_PORT", SYMLINK+="spock-kitchen", MODE="0660", GROUP="lp"
+# KERNEL=="lp*", KERNELS=="DEVPATH_COUNTER_PORT", SYMLINK+="spock-counter", MODE="0660", GROUP="lp"
+# KERNEL=="lp*", KERNELS=="DEVPATH_SMALL_PORT",   SYMLINK+="spock-small",   MODE="0660", GROUP="lp"
+
+# Alternativ ENV{ID_PATH} (stabiler String aus udevadm):
+# ENV{ID_PATH}=="platform-*-usb-0:1.2:1.0", SYMLINK+="spock-kitchen", MODE="0660", GROUP="lp"
+# ENV{ID_PATH}=="platform-*-usb-0:1.3:1.0", SYMLINK+="spock-counter", MODE="0660", GROUP="lp"
+# ENV{ID_PATH}=="platform-*-usb-0:1.4:1.0", SYMLINK+="spock-small",   MODE="0660", GROUP="lp"

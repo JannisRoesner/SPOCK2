@@ -1,0 +1,134 @@
+# SPOCK2 Beispielkonfiguration
+# Kopieren nach spock2.toml und anpassen.
+# Pfad-Override: Umgebungsvariable SPOCK2_CONFIG=/pfad/zur/datei.toml
+
+[riker]
+base_url = "http://127.0.0.1:3000"
+# Verbindungs-Timeouts (Sekunden)
+connect_timeout_s = 3.0
+read_timeout_s = 10.0
+# Complete-Retries bei transienten Fehlern
+complete_retries = 2
+
+[picard]
+enabled = true
+base_url = "http://127.0.0.1:5000"
+connect_timeout_s = 3.0
+read_timeout_s = 10.0
+# Optional: feste Sitzungs-ID; leer = GET /api/aktive-sitzung
+session_id = ""
+# Zettel-Typen, die als Küchen-Ziel gelten (tolerant normalisiert)
+kitchen_note_types = ["anKueche", "anKüche", "kueche", "küche"]
+
+[tls]
+# TLS-Zertifikatsprüfung (System-CAs). Nur in Dev bewusst auf false setzen.
+ssl_verify = true
+# Optional: Pfad zu CA-Bundle (leer = System-Default)
+ca_bundle = ""
+
+[timeouts]
+# Globale HTTP-Defaults (werden von riker/picard überschrieben, falls gesetzt)
+connect_timeout_s = 3.0
+read_timeout_s = 10.0
+# Wartezeit bis CUPS-Job als „hängend“ gilt (Sekunden)
+cups_job_timeout_s = 120.0
+
+[polling]
+# Intervall bei erfolgreichem Poll (Sekunden)
+interval_s = 3.0
+# Single-Flight: kein paralleles Poll (immer true in V1)
+single_flight = true
+
+[backoff]
+# Exponential Backoff bei Fehlern: start → *factor → cap
+initial_s = 3.0
+factor = 2.0
+max_s = 30.0
+# Sofort Reset auf interval_s bei Erfolg
+reset_on_success = true
+
+[printers.kitchen]
+role = "kitchen"
+cups_queue = "spock-kitchen"
+profile = "tsp100"
+enabled = true
+
+[printers.counter]
+role = "counter"
+cups_queue = "spock-counter"
+profile = "tsp100"
+enabled = true
+
+[printers.small]
+role = "small"
+cups_queue = "spock-small"
+profile = "pos5890k"
+enabled = true
+
+[profiles.tsp100]
+name = "tsp100"
+paper_width_mm = 80
+dots_per_line = 576
+supports_cutter = true
+encoding = "cp437"
+qr_as_bitmap = false
+capabilities = ["cutter", "barcode"]
+
+[profiles.pos5890k]
+name = "pos5890k"
+paper_width_mm = 58
+dots_per_line = 384
+supports_cutter = false
+encoding = "cp437"
+qr_as_bitmap = true
+capabilities = ["escpos"]
+
+[routing]
+# Stationsmodus: kitchen | counter
+# Bestimmt, welche Rollen diese Station bedient, wenn keine Kategorie-Regel greift.
+station_role = "kitchen"
+# Kategorie → Rollen (eine Bestellung kann mehrere PrintJobs erzeugen)
+# Schlüssel = Kategorie-Name aus RIKER (case-insensitive Match empfohlen in App)
+[routing.category_routing]
+"Getränke" = ["counter"]
+"Speisen" = ["kitchen"]
+"Dessert" = ["kitchen"]
+"Sonstiges" = ["kitchen", "counter"]
+
+[print]
+auto_print_new_orders = true
+auto_print_new_notes = true
+# Druck ≠ Erledigt: kein automatisches Complete nach Druck
+auto_complete_after_print = false
+default_copies = 1
+max_attempts = 5
+# Sekunden zwischen Retries eines failed→pending Jobs
+retry_delay_s = 5.0
+
+[ui]
+fullscreen = true
+# Bestätigung vor „Erledigt“
+confirm_complete = true
+# Optionaler Admin-PIN (leer = kein PIN)
+admin_pin = ""
+# Minimale Touch-Target-Höhe in px
+min_touch_target_px = 56
+
+[logging]
+level = "INFO"
+# Datei-Log; leer = nur Console + Default-Pfad unter ~/.local/state/spock2/
+file_path = ""
+max_bytes = 5_242_880
+backup_count = 5
+# key=value | json
+format = "keyvalue"
+
+[db]
+# SQLite-Pfad; leer = ~/.local/state/spock2/spock2.db
+path = ""
+
+[diagnostics]
+# Erweiterte Diagnose-Logs (keine Secrets)
+verbose = false
+# USB-Probe beim Start (nur Dev)
+probe_usb_on_startup = false

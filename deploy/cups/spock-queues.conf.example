@@ -1,0 +1,46 @@
+# Beispiel-Dokumentation für SPOCK2-CUPS-Queues.
+# Keine cupsd-Drop-in-Datei — Queues mit lpadmin anlegen (siehe README.md).
+#
+# Ersetzen: SERIAL_TSP100_KITCHEN, SERIAL_TSP100_COUNTER, SERIAL_POS5890K_SMALL
+# Dev ohne Hardware: DeviceURI cups-pdf:/ und Model everywhere
+
+# --- spock-kitchen (Star TSP100, Rolle kitchen) ---
+# QueueName: spock-kitchen
+# DeviceURI: usb://Star/TSP100?serial=SERIAL_TSP100_KITCHEN
+# DeviceURI (Dev): cups-pdf:/
+# Model: raw   # oder PPD/Filter laut ADR 0007 nach Hardwaretest
+# Shared: No
+# State: Idle
+# Accepting: Yes
+
+# --- spock-counter (Star TSP100, Rolle counter) ---
+# QueueName: spock-counter
+# DeviceURI: usb://Star/TSP100?serial=SERIAL_TSP100_COUNTER
+# DeviceURI (Dev): cups-pdf:/
+# Model: raw
+# Shared: No
+# Accepting: Yes
+
+# --- spock-small (POS 5890K, Rolle small) ---
+# QueueName: spock-small
+# DeviceURI: usb://POS/5890K?serial=SERIAL_POS5890K_SMALL
+# DeviceURI (Dev): cups-pdf:/
+# Model: raw
+# Shared: No
+# Accepting: Yes
+
+# --- Kurzkommandos (Copy-Paste) ---
+#
+# Dev / CUPS-PDF:
+#   lpadmin -p spock-kitchen -E -v cups-pdf:/ -m everywhere
+#   lpadmin -p spock-counter -E -v cups-pdf:/ -m everywhere
+#   lpadmin -p spock-small   -E -v cups-pdf:/ -m everywhere
+#   cupsenable spock-kitchen spock-counter spock-small
+#   cupsaccept spock-kitchen spock-counter spock-small
+#
+# Prod / Serial:
+#   lpadmin -p spock-kitchen -E -v "usb://Star/TSP100?serial=SERIAL_TSP100_KITCHEN" -m raw
+#   lpadmin -p spock-counter -E -v "usb://Star/TSP100?serial=SERIAL_TSP100_COUNTER" -m raw
+#   lpadmin -p spock-small   -E -v "usb://POS/5890K?serial=SERIAL_POS5890K_SMALL" -m raw
+#   cupsenable spock-kitchen spock-counter spock-small
+#   cupsaccept spock-kitchen spock-counter spock-small

@@ -1,0 +1,43 @@
+# SPOCK2 — systemd User-Unit (empfohlen für Latitude-Kiosk)
+#
+# Läuft im Kontext der grafischen Login-Session (DISPLAY, DBus, Audio).
+# After=graphical-session.target + cups + Netzwerk (ADR 0009).
+#
+# Installation:
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/systemd/spock2.user.service ~/.config/systemd/user/spock2.service
+#   # oder systemweit für alle User:
+#   # sudo cp … /etc/systemd/user/spock2.service
+#
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now spock2.service
+#
+# Linger (Autostart auch ohne aktive Console — oft nicht nötig bei Auto-Login):
+#   sudo loginctl enable-linger "$USER"
+#
+# Status / Logs:
+#   systemctl --user status spock2
+#   journalctl --user -u spock2 -f
+
+[Unit]
+Description=SPOCK2 Kiosk Client (User Session)
+Documentation=file:///usr/share/doc/spock2/README.md
+PartOf=graphical-session.target
+After=graphical-session.target network-online.target cups.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=SPOCK2_CONFIG=/etc/spock2/spock2.toml
+# Fallback, falls kein System-Config-Pfad:
+# Environment=SPOCK2_CONFIG=%h/.config/spock2/spock2.toml
+
+ExecStart=/usr/bin/spock2
+Restart=on-failure
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical-session.target

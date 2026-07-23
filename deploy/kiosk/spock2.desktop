@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=SPOCK2
+Name[de]=SPOCK2 Kiosk
+Comment=RIKER kitchen display and CUPS printing
+Comment[de]=RIKER-Küchenanzeige und CUPS-Druck
+Exec=/usr/share/spock2/kiosk/spock2-session.sh
+Icon=preferences-desktop-display
+Terminal=false
+Categories=Office;Utility;
+StartupNotify=true
+# Autostart nach Login: nach ~/.config/autostart/spock2.desktop kopieren
+X-GNOME-Autostart-enabled=true
+# Nur in grafischer Session starten
+OnlyShowIn=GNOME;Unity;XFCE;KDE;LXQt;MATE;

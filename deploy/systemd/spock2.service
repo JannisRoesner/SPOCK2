@@ -1,0 +1,48 @@
+# SPOCK2 — systemd System-Unit (Beispiel)
+#
+# Empfohlen für Kiosk ist meist die User-Unit (spock2.user.service),
+# weil PySide6/Qt eine grafische Session braucht.
+# Diese System-Unit eignet sich, wenn die Session separat läuft und
+# /usr/bin/spock2 z. B. unter einem festen User gestartet wird.
+#
+# Installation:
+#   sudo cp deploy/systemd/spock2.service /etc/systemd/system/spock2.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now spock2.service
+#
+# User-Service (bevorzugt für Touch-Kiosk):
+#   siehe spock2.user.service
+#   systemctl --user enable --now spock2.service
+
+[Unit]
+Description=SPOCK2 Kiosk Client (RIKER/PICARD + CUPS)
+Documentation=file:///usr/share/doc/spock2/README.md
+After=network-online.target cups.service
+Wants=network-online.target
+Requires=cups.service
+
+[Service]
+Type=simple
+# Fester Kiosk-User — anpassen
+User=spock
+Group=spock
+# SupplementaryGroups=lp
+
+Environment=SPOCK2_CONFIG=/etc/spock2/spock2.toml
+# Display nur setzen, wenn die Unit wirklich die GUI startet:
+# Environment=DISPLAY=:0
+# Environment=XAUTHORITY=/home/spock/.Xauthority
+# Environment=QT_QPA_PLATFORM=xcb
+
+ExecStart=/usr/bin/spock2
+Restart=on-failure
+RestartSec=5
+# TimeoutStopSec=30
+
+# Logs: journald (journalctl -u spock2) + optional Datei laut TOML [logging]
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+# Für GUI-Start nach Display-Manager ggf. WantedBy=graphical.target

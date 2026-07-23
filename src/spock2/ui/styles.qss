@@ -1,0 +1,267 @@
+/* SPOCK2 – Küchen-Kiosk, hell, hoher Kontrast, touch-freundlich */
+
+* {
+    font-family: "Segoe UI", "DejaVu Sans", "Noto Sans", sans-serif;
+}
+
+QMainWindow, QDialog {
+    background-color: #f4f4f0;
+    color: #1a1a1a;
+}
+
+QWidget#centralRoot {
+    background-color: #f4f4f0;
+}
+
+QScrollArea {
+    border: none;
+    background: transparent;
+}
+
+QScrollArea > QWidget > QWidget {
+    background: transparent;
+}
+
+QLabel {
+    color: #1a1a1a;
+}
+
+QLabel#emptyState {
+    font-size: 22pt;
+    font-weight: 600;
+    color: #555555;
+    padding: 48px;
+}
+
+QLabel#emptyStateHint {
+    font-size: 14pt;
+    color: #666666;
+    padding: 8px 48px 48px 48px;
+}
+
+/* --- Order Card --- */
+QFrame#orderCard {
+    background-color: #ffffff;
+    border: 3px solid #1a1a1a;
+    border-radius: 4px;
+    margin: 6px;
+}
+
+QLabel#tableNumber {
+    font-size: 36pt;
+    font-weight: 800;
+    color: #111111;
+}
+
+QLabel#waitTime {
+    font-size: 16pt;
+    font-weight: 700;
+    color: #b35c00;
+}
+
+QLabel#waitTimeHot {
+    font-size: 16pt;
+    font-weight: 800;
+    color: #a10000;
+}
+
+QLabel#orderMeta {
+    font-size: 12pt;
+    color: #333333;
+}
+
+QLabel#itemLine {
+    font-size: 15pt;
+    font-weight: 600;
+    color: #111111;
+}
+
+QLabel#itemNotes {
+    font-size: 12pt;
+    color: #444444;
+    font-style: italic;
+}
+
+QLabel#categoryHeader {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #555555;
+    text-transform: uppercase;
+    padding-top: 6px;
+}
+
+/* --- Buttons --- */
+QPushButton {
+    min-height: 56px;
+    min-width: 120px;
+    font-size: 14pt;
+    font-weight: 700;
+    border: 2px solid #1a1a1a;
+    border-radius: 4px;
+    padding: 8px 16px;
+    background-color: #ffffff;
+    color: #111111;
+}
+
+QPushButton:hover {
+    background-color: #ecece4;
+}
+
+QPushButton:pressed {
+    background-color: #ddd8c8;
+}
+
+QPushButton:disabled {
+    color: #888888;
+    border-color: #aaaaaa;
+    background-color: #e8e8e8;
+}
+
+QPushButton#doneButton {
+    background-color: #1a7a3c;
+    color: #ffffff;
+    border-color: #0f4d26;
+}
+
+QPushButton#doneButton:hover {
+    background-color: #156533;
+}
+
+QPushButton#doneButton:pressed {
+    background-color: #0f4d26;
+}
+
+QPushButton#reprintButton {
+    background-color: #fff8e6;
+    border-color: #b35c00;
+    color: #7a3e00;
+}
+
+QPushButton#reprintButton:hover {
+    background-color: #ffe8b8;
+}
+
+QPushButton#primaryButton {
+    background-color: #1a1a1a;
+    color: #ffffff;
+}
+
+QPushButton#primaryButton:hover {
+    background-color: #333333;
+}
+
+QPushButton#dangerButton {
+    background-color: #a10000;
+    color: #ffffff;
+    border-color: #6b0000;
+}
+
+/* --- Status bar --- */
+QFrame#statusBar {
+    background-color: #1a1a1a;
+    border-top: 3px solid #b35c00;
+    min-height: 52px;
+}
+
+QLabel#statusLabel {
+    color: #f4f4f0;
+    font-size: 12pt;
+    font-weight: 600;
+    padding: 4px 12px;
+}
+
+QLabel#statusOk {
+    color: #7dffa0;
+    font-size: 12pt;
+    font-weight: 700;
+    padding: 4px 12px;
+}
+
+QLabel#statusWarn {
+    color: #ffcc66;
+    font-size: 12pt;
+    font-weight: 700;
+    padding: 4px 12px;
+}
+
+QLabel#statusErr {
+    color: #ff8a80;
+    font-size: 12pt;
+    font-weight: 700;
+    padding: 4px 12px;
+}
+
+/* --- Menu --- */
+QMenuBar {
+    background-color: #ffffff;
+    border-bottom: 2px solid #1a1a1a;
+    font-size: 13pt;
+    min-height: 40px;
+}
+
+QMenuBar::item {
+    padding: 8px 16px;
+    background: transparent;
+}
+
+QMenuBar::item:selected {
+    background-color: #ffe8b8;
+}
+
+QMenu {
+    background-color: #ffffff;
+    border: 2px solid #1a1a1a;
+    font-size: 13pt;
+}
+
+QMenu::item {
+    padding: 12px 24px;
+    min-height: 40px;
+}
+
+QMenu::item:selected {
+    background-color: #ffe8b8;
+}
+
+/* --- Dialogs --- */
+QDialog QLabel#dialogTitle {
+    font-size: 20pt;
+    font-weight: 800;
+}
+
+QTextEdit, QPlainTextEdit, QLineEdit, QComboBox {
+    font-size: 14pt;
+    border: 2px solid #1a1a1a;
+    border-radius: 2px;
+    padding: 8px;
+    background-color: #ffffff;
+    min-height: 40px;
+}
+
+QComboBox::drop-down {
+    width: 40px;
+}
+
+QComboBox QAbstractItemView {
+    font-size: 14pt;
+    border: 2px solid #1a1a1a;
+    selection-background-color: #ffe8b8;
+    selection-color: #111111;
+}
+
+QFrame#notePopupFrame {
+    background-color: #fff8e6;
+    border: 4px solid #b35c00;
+    border-radius: 4px;
+}
+
+QLabel#notePopupTitle {
+    font-size: 22pt;
+    font-weight: 800;
+    color: #7a3e00;
+}
+
+QLabel#notePopupBody {
+    font-size: 16pt;
+    color: #1a1a1a;
+}

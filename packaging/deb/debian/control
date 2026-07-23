@@ -1,0 +1,43 @@
+Source: spock2
+Section: utils
+Priority: optional
+Maintainer: SPOCK2 Contributors <spock2@localhost>
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-python,
+ python3-all,
+ python3-setuptools,
+ python3-pip,
+ python3-wheel
+Standards-Version: 4.6.2
+Homepage: https://github.com/JannisRoesner/SPOCK2
+Rules-Requires-Root: no
+
+Package: spock2
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${python3:Depends},
+ python3 (>= 3.12),
+ cups,
+ cups-client,
+ libxcb1,
+ libxkbcommon0,
+ libgl1,
+ libegl1,
+ libdbus-1-3,
+ libfontconfig1,
+ libfreetype6
+Recommends:
+ printer-driver-cups-pdf,
+ cups-bsd,
+ udev
+Suggests:
+ cups-ppdc
+Description: SPOCK2 kitchen kiosk client (RIKER/PICARD + CUPS)
+ Modularer PySide6-Kiosk-Client für Ubuntu: holt Bestellungen von RIKER,
+ optional Zettel von PICARD, und druckt über CUPS-Rollenqueues
+ (spock-kitchen, spock-counter, spock-small).
+ .
+ Enthält Binary spock2, Beispiel-Config unter /etc/spock2/,
+ systemd-/udev-/Kiosk-Hilfsdateien.
