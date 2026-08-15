@@ -98,7 +98,7 @@ jobs:
 
   linux-deb:
     needs: version
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v4
 
@@ -118,7 +118,7 @@ jobs:
 
       - name: Build .deb
         env:
-          # debian/rules nutzt pip; Ubuntu 24.04 ist „externally managed“
+          # debian/rules nutzt pip; Ubuntu 26.04 ist „externally managed“
           PIP_BREAK_SYSTEM_PACKAGES: "1"
         run: |
           ln -sfn packaging/deb/debian debian
@@ -137,7 +137,7 @@ jobs:
 
   linux-rpm:
     needs: version
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
