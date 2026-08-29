@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 import contextlib
+import faulthandler
 import logging
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Q_ARG, QMetaObject, QObject, Qt, QThread, QTimer, Slot
+import PySide6
+from PySide6.QtCore import (
+    Q_ARG,
+    QLibraryInfo,
+    QMetaObject,
+    QObject,
+    Qt,
+    QThread,
+    QTimer,
+    Slot,
+)
 from PySide6.QtWidgets import QApplication
 
 from spock2.api.backoff import ExponentialBackoff
@@ -269,6 +280,9 @@ class ApplicationController(QObject):
         )
         self._cups_status_worker.moveToThread(status_thread)
         self._cups_status_worker.job_updated.connect(self._on_job_updated)
+        self._cups_status_worker.health_snapshot.connect(
+            self.printer_health.apply_queue_snapshot
+        )
         self._threads.append(status_thread)
         status_thread.start()
 
@@ -277,6 +291,8 @@ class ApplicationController(QObject):
         self._cups_timer.timeout.connect(self._cups_status_worker.poll_once)
         self._cups_timer.start()
 
+        # Drucker-Health über den Status-Thread: CUPS-IPP blockiert und darf
+        # den UI-Thread nicht anhalten (siehe PrinterHealth.refresh_from_transport).
         self._health_timer = QTimer(self)
         self._health_timer.setInterval(5000)
         self._health_timer.timeout.connect(self._refresh_printer_health)
@@ -479,8 +495,14 @@ class ApplicationController(QObject):
         logger.warning("event=print_worker_error msg=%s", message)
 
     def _kick_print_drain(self) -> None:
-        if self._print_worker is not None:
-            QTimer.singleShot(0, self._print_worker.drain)
+        if self._print_worker is None:
+            return
+        # Muss im Print-Thread laufen (Transport + DB), nicht im UI-Thread.
+        QMetaObject.invokeMethod(
+            self._print_worker,
+            "drain",
+            Qt.ConnectionType.QueuedConnection,
+        )
 
     def _refresh_pending_count(self) -> None:
         try:
@@ -497,10 +519,14 @@ class ApplicationController(QObject):
 
     @Slot()
     def _refresh_printer_health(self) -> None:
-        try:
-            self.printer_health.refresh_from_transport(self.transport)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("event=printer_health_failed err=%s", exc)
+        """Stößt die Health-Abfrage im Status-Thread an (Ergebnis via Signal)."""
+        if self._cups_status_worker is None:
+            return
+        QMetaObject.invokeMethod(
+            self._cups_status_worker,
+            "poll_health",
+            Qt.ConnectionType.QueuedConnection,
+        )
 
     def shutdown(self) -> None:
         logger.info("event=app_shutdown")
@@ -511,14 +537,20 @@ class ApplicationController(QObject):
         if self._health_timer is not None:
             self._health_timer.stop()
 
-        if self._poll_worker is not None:
-            self._poll_worker.stop_polling()
-        if self._note_poll_worker is not None:
-            self._note_poll_worker.stop_polling()
-        if self._print_worker is not None:
-            self._print_worker.stop()
-        if self._cups_status_worker is not None:
-            self._cups_status_worker.stop()
+        # Worker gehören ihren Threads: Timer dort stoppen, nicht von hier aus.
+        for worker, slot in (
+            (self._poll_worker, "stop_polling"),
+            (self._note_poll_worker, "stop_polling"),
+            (self._print_worker, "stop"),
+            (self._cups_status_worker, "stop"),
+        ):
+            if worker is None:
+                continue
+            QMetaObject.invokeMethod(
+                worker,
+                slot,
+                Qt.ConnectionType.QueuedConnection,
+            )
 
         for thread in self._threads:
             thread.quit()
@@ -548,6 +580,10 @@ def main(argv: list[str] | None = None) -> int:
         backup_count=config.logging.backup_count,
         fmt=config.logging.format,
     )
+    # Segfaults im Qt-/Treiber-Stack sonst spurlos: Python-Frames auf stderr.
+    with contextlib.suppress(Exception):
+        faulthandler.enable()
+
     logger.info("event=app_start version=%s", __import__("spock2").__version__)
     logger.info(
         "event=config_loaded path=%s riker=%s picard_enabled=%s station_role=%s fullscreen=%s",
@@ -560,6 +596,12 @@ def main(argv: list[str] | None = None) -> int:
 
     # Offscreen/headless tests: QT_QPA_PLATFORM=offscreen
     app = QApplication(sys.argv if argv is None else argv)
+    logger.info(
+        "event=qt_runtime pyside=%s qt=%s platform=%s",
+        PySide6.__version__,
+        QLibraryInfo.version().toString(),
+        app.platformName(),
+    )
     app.setApplicationName("SPOCK2")
     app.setOrganizationName("SPOCK2")
     app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)

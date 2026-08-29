@@ -1,3 +1,11 @@
+spock2 (0.1.2-1) UNRELEASED; urgency=medium
+
+  * Give each thread its own pycups connection (shared libcups socket crashed).
+  * Poll printer health in the status thread; CUPS IPP no longer blocks the UI.
+  * Enable faulthandler and log PySide/Qt/platform at startup.
+
+ -- SPOCK2 Contributors <spock2@localhost>  Sat, 29 Aug 2026 21:40:00 +0200
+
 spock2 (0.1.1-1) UNRELEASED; urgency=medium
 
   * Release 0.1.1: Ubuntu 26.04 system Python and apt runtime deps.

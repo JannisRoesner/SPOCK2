@@ -7,7 +7,7 @@
 # Version mit pyproject.toml abstimmen.
 
 Name:           spock2
-Version:        0.1.1
+Version:        0.1.2
 Release:        1%{?dist}
 Summary:        SPOCK2 kitchen kiosk client (RIKER/PICARD + CUPS)
 License:        AGPL-3.0-or-later
@@ -81,6 +81,8 @@ install -D -m 0644 src/spock2/ui/resources/spock2_icon_256.png \
 %{_datadir}/icons/hicolor/256x256/apps/spock2.png
 
 %changelog
+* Sat Aug 29 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.2-1
+- Thread-safe CUPS access; printer health off the UI thread
 * Sat Aug 29 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.1-1
 - Ubuntu 26.04 apt Python runtime deps
 * Thu Jul 23 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.0-1

@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Slot
 
 from spock2.api.errors import CupsUnavailable, DbError, InvalidTransitionError, PrintFailed
 from spock2.config.models import AppConfig
@@ -53,13 +53,16 @@ class PrintWorker(QObject):
     def max_attempts(self) -> int:
         return self.config.print.max_attempts
 
+    @Slot()
     def start_draining(self) -> None:
         self._running = True
         self.drain()
 
+    @Slot()
     def stop(self) -> None:
         self._running = False
 
+    @Slot()
     def drain(self, *, batch_size: int = 8) -> int:
         """Verarbeitet bis zu ``batch_size`` pending Jobs. Gibt Anzahl zurück."""
         processed = 0

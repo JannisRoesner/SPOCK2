@@ -64,6 +64,7 @@ class PollWorker(QObject):
     def status(self) -> ApiStatus:
         return self._status
 
+    @Slot()
     def start_polling(self) -> None:
         """Start the poll timer and trigger an immediate poll."""
         self._running = True
@@ -73,8 +74,9 @@ class PollWorker(QObject):
             self._timer.start()
         self.poll_once()
 
+    @Slot()
     def stop_polling(self) -> None:
-        """Stop the poll timer."""
+        """Stop the poll timer (im Worker-Thread aufrufen)."""
         self._running = False
         self._timer.stop()
 
@@ -98,6 +100,7 @@ class PollWorker(QObject):
         self._pending_client = None
         self.set_client(client)
 
+    @Slot()
     def poll_once(self) -> None:
         """Fetch open orders once; skip if a poll is already in flight."""
         if self._in_flight:

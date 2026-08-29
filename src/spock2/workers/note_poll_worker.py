@@ -66,6 +66,7 @@ class NotePollWorker(QObject):
     def status(self) -> ApiStatus:
         return self._status
 
+    @Slot()
     def start_polling(self) -> None:
         if not self._client.enabled:
             logger.info("NotePollWorker: PICARD disabled — not starting")
@@ -77,7 +78,9 @@ class NotePollWorker(QObject):
             self._timer.start()
         self.poll_once()
 
+    @Slot()
     def stop_polling(self) -> None:
+        """Stoppt den Poll-Timer (im Worker-Thread aufrufen)."""
         self._running = False
         self._timer.stop()
 
@@ -101,6 +104,7 @@ class NotePollWorker(QObject):
         self._pending_client = None
         self.set_client(client)
 
+    @Slot()
     def poll_once(self) -> None:
         if not self._client.enabled:
             return

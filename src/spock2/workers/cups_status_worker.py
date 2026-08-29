@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Slot
 
 from spock2.api.errors import DbError, InvalidTransitionError
 from spock2.config.models import AppConfig
@@ -13,6 +13,7 @@ from spock2.domain.print_job import PrintJob, PrintJobStatus
 from spock2.persistence import print_jobs
 from spock2.persistence.db import connection
 from spock2.printing.transport import PrintTransport
+from spock2.services.printer_health import transport_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class CupsStatusWorker(QObject):
 
     job_updated = Signal(object)
     error = Signal(str)
+    health_snapshot = Signal(object)  # dict aus transport_snapshot
 
     def __init__(
         self,
@@ -46,13 +48,21 @@ class CupsStatusWorker(QObject):
         self.transport = transport
         self._running = False
 
+    @Slot()
     def start_polling(self) -> None:
         self._running = True
         self.poll_once()
 
+    @Slot()
     def stop(self) -> None:
         self._running = False
 
+    @Slot()
+    def poll_health(self) -> None:
+        """Fragt Transport-/Queue-Zustand ab und schickt ihn an den UI-Thread."""
+        self.health_snapshot.emit(transport_snapshot(self.transport))
+
+    @Slot()
     def poll_once(self) -> int:
         """Prüft alle submitted/printing Jobs. Gibt Anzahl Updates zurück."""
         if not self.transport.is_available():

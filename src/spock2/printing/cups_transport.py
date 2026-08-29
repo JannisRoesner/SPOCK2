@@ -6,6 +6,7 @@ import contextlib
 import logging
 import os
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +36,12 @@ _IPP_STATE_MAP: dict[int, str] = {
 
 
 class CupsTransport:
-    """pycups-basierter Transport: ``printFile`` + Job-Status."""
+    """pycups-basierter Transport: ``printFile`` + Job-Status.
+
+    Eine ``cups.Connection`` kapselt einen libcups-HTTP-Socket und ist **nicht**
+    thread-safe. SPOCK2 nutzt denselben Transport aus UI-, Print- und
+    Status-Thread, daher hält jeder Thread seine eigene Verbindung.
+    """
 
     def __init__(self, *, connection: Any | None = None) -> None:
         if _cups is None:
@@ -43,10 +49,34 @@ class CupsTransport:
                 "pycups nicht verfügbar",
                 cause=_CUPS_IMPORT_ERROR,
             )
+        self._local = threading.local()
+        # Injizierte Verbindung (Tests): bewusst geteilt, kein Thread-Local.
+        self._injected: Any | None = connection
+        if connection is None:
+            self._local.conn = self._new_connection()
+
+    @staticmethod
+    def _new_connection() -> Any:
         try:
-            self._conn = connection if connection is not None else _cups.Connection()
+            return _cups.Connection()
         except Exception as exc:  # noqa: BLE001
             raise CupsUnavailable("CUPS-Verbindung fehlgeschlagen", cause=exc) from exc
+
+    @property
+    def _conn(self) -> Any:
+        """Verbindung des aufrufenden Threads (lazy pro Thread)."""
+        injected = getattr(self, "_injected", None)
+        if injected is not None:
+            return injected
+        local = getattr(self, "_local", None)
+        if local is None:
+            local = threading.local()
+            self._local = local
+        conn = getattr(local, "conn", None)
+        if conn is None:
+            conn = self._new_connection()
+            local.conn = conn
+        return conn
 
     def submit(self, queue_name: str, data: bytes, title: str) -> int | None:
         if not queue_name:

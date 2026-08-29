@@ -13,6 +13,30 @@ from spock2.domain.status import PrinterStatus
 logger = logging.getLogger(__name__)
 
 
+def transport_snapshot(transport: Any) -> dict[str, Any]:
+    """Fragt den Transport ab und liefert ein serialisierbares Ergebnis.
+
+    Blockiert (CUPS-IPP über Socket) – nur aus Worker-Threads aufrufen. Das
+    Ergebnis lässt sich per Signal an den UI-Thread schicken.
+    """
+    try:
+        available = bool(transport.is_available())
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("event=printer_health_available_failed err=%s", exc)
+        return {"available": False, "queues": [], "error": str(exc)}
+
+    if not available:
+        return {"available": False, "queues": [], "error": "Transport offline"}
+
+    try:
+        queues = [str(q) for q in (transport.list_queues() or [])]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("event=printer_health_list_failed err=%s", exc)
+        return {"available": False, "queues": [], "error": str(exc)}
+
+    return {"available": True, "queues": queues, "error": None}
+
+
 class PrinterHealth(QObject):
     """Trackt Online/Accepting-Status je Druckerrolle aus dem Transport."""
 
@@ -95,31 +119,27 @@ class PrinterHealth(QObject):
 
     def refresh_from_transport(self, transport: Any) -> None:
         """Synchrone Abfrage – nur aus Worker-Threads aufrufen, nicht aus UI."""
-        try:
-            available = bool(transport.is_available())
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("event=printer_health_available_failed err=%s", exc)
-            self.mark_transport_unavailable(str(exc))
+        self.apply_queue_snapshot(transport_snapshot(transport))
+
+    @Slot(object)
+    def apply_queue_snapshot(self, snapshot: object) -> None:
+        """Übernimmt ein ``transport_snapshot``-Ergebnis (UI-Thread-sicher)."""
+        if not isinstance(snapshot, dict):
             return
 
-        if not available:
+        error = snapshot.get("error")
+        if error:
+            self.mark_transport_unavailable(str(error))
+            return
+        if not snapshot.get("available", False):
             self.mark_transport_unavailable("Transport offline")
             return
 
-        queues: list[str] = []
-        try:
-            queues = list(transport.list_queues() or [])
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("event=printer_health_list_failed err=%s", exc)
-            self.mark_transport_unavailable(str(exc))
-            return
-
+        queues = [str(q) for q in (snapshot.get("queues") or [])]
         queue_set = {q.casefold() for q in queues}
         for role, queue_name in self._role_queues.items():
-            online = queue_name.casefold() in queue_set or not queues
             # FileTransport: leere Liste kann „alles ok“ bedeuten
-            if not queues and available:
-                online = True
+            online = not queues or queue_name.casefold() in queue_set
             status = self._statuses.get(role) or PrinterStatus(
                 role=role, queue_name=queue_name
             )
