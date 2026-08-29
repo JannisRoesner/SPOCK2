@@ -391,6 +391,8 @@ class AdminDialog(QDialog):
 
             test_btn = QPushButton(f"Test {_ROLE_LABELS[role_t]}")
             test_btn.setObjectName("secondaryButton")
+            test_btn.setAutoDefault(False)
+            test_btn.setDefault(False)
             test_btn.clicked.connect(lambda _checked=False, r=role: self._test_print(r))
             form.addRow("", test_btn)
 
@@ -605,7 +607,9 @@ class AdminDialog(QDialog):
         self._working = cfg
         return cfg
 
-    def _apply_collected(self, *, close_on_success: bool) -> bool:
+    def _apply_collected(
+        self, *, close_on_success: bool, show_message: bool = True
+    ) -> bool:
         cfg = self._collect()
         if cfg is None:
             return False
@@ -616,7 +620,7 @@ class AdminDialog(QDialog):
             return True
         message = self._on_apply(cfg)
         self._result_config = cfg
-        if message:
+        if message and show_message:
             QMessageBox.information(self, "Einstellungen", message)
         if close_on_success:
             self.accept()
@@ -636,7 +640,7 @@ class AdminDialog(QDialog):
                 f"Kein Testprint-Hook verdrahtet (Rolle: {role}).",
             )
             return
-        if not self._apply_collected(close_on_success=False):
+        if not self._apply_collected(close_on_success=False, show_message=False):
             return
         try:
             self._on_test_print(role)

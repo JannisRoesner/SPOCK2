@@ -89,6 +89,33 @@ def test_admin_collect_keeps_untouched_sections(qapp: QApplication) -> None:
     dlg.close()
 
 
+def test_admin_test_print_does_not_show_settings_saved_dialog(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Test-Knopf wendet Einstellungen an, aber ohne „Einstellungen gespeichert“."""
+    from PySide6.QtWidgets import QMessageBox
+
+    cfg = AppConfig()
+    messages: list[tuple[str, str]] = []
+
+    def fake_information(parent, title, text) -> None:  # noqa: ANN001
+        messages.append((title, text))
+
+    monkeypatch.setattr(QMessageBox, "information", fake_information)
+
+    dlg = AdminDialog(
+        cfg,
+        list_queues=lambda _m: ["Star Kitchen"],
+        on_apply=lambda _cfg: "Einstellungen gespeichert.",
+        on_test_print=lambda _role: None,
+    )
+    dlg._test_print("kitchen")
+
+    assert not any(title == "Einstellungen" for title, _ in messages)
+    assert any(title == "Testprint" for title, _ in messages)
+    dlg.close()
+
+
 def test_admin_keeps_unknown_queue_in_combo(qapp: QApplication) -> None:
     cfg = AppConfig(
         printers={
