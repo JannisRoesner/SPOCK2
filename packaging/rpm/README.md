@@ -7,7 +7,7 @@ ist für Fedora/RHEL-ähnliche Systeme gedacht und noch nicht produktionsreif.
 
 ```bash
 # Abhängigkeiten (Fedora-Beispiel)
-sudo dnf install -y rpm-build rpmdevtools python3-devel python3-pip python3-wheel
+sudo dnf install -y rpm-build rpmdevtools python3-devel python3-pip python3-wheel python3-build
 
 # Tarball aus Git erzeugen oder _sourcedir auf Repo zeigen
 cd /pfad/zu/SPOCK2
@@ -28,4 +28,4 @@ rpmbuild -ba packaging/rpm/spock2.spec \
 
 - PySide6 und `pycups` können architekturabhängige Wheels brauchen — `BuildArch: noarch` ggf. entfernen.
 - `%license LICENSE` setzt voraus, dass eine `LICENSE`-Datei im Repo liegt.
-- Für typische Event-Kiosks Ubuntu 24.04 + `.deb` bevorzugen.
+- Für typische Event-Kiosks Ubuntu 26.04 + `.deb` bevorzugen.

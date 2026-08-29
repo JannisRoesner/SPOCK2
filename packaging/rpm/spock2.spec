@@ -1,6 +1,6 @@
 # SPOCK2 — optionale RPM-Spec (Fedora/RHEL-Familie)
 #
-# Primärziel ist .deb (Ubuntu 24.04). Diese Spec ist ein grobes Skelett.
+# Primärziel ist .deb (Ubuntu 26.04). Diese Spec ist ein grobes Skelett.
 # Build (aus Repo-Root, nach %setup-Anpassung):
 #   rpmbuild -ba packaging/rpm/spock2.spec
 #
@@ -19,7 +19,8 @@ BuildArch:      noarch
 BuildRequires:  python3-devel >= 3.12
 BuildRequires:  python3-pip
 BuildRequires:  python3-setuptools
-BuildRequires:  python3-wheel
+BuildRequires:  python3-build
+BuildRequires:  systemd-rpm-macros
 Requires:       python3 >= 3.12
 Requires:       cups
 Requires:       cups-client
@@ -35,11 +36,13 @@ Druck über CUPS-Queues spock-kitchen / spock-counter / spock-small.
 # rpmbuild --define "_sourcedir …" anpassen oder tarball erzeugen.
 
 %build
-python3 -m pip wheel -w %{_builddir}/wheels .
+mkdir -p %{_builddir}/wheels
+python3 -m pip wheel --no-deps -w %{_builddir}/wheels .
 
 %install
 rm -rf %{buildroot}
-python3 -m pip install --no-deps --root=%{buildroot} --prefix=/usr \
+python3 -m pip install --no-deps --no-compile --no-user \
+  --root=%{buildroot} --prefix=/usr \
   %{_builddir}/wheels/spock2-*.whl
 
 install -D -m 0644 config/spock2.example.toml \
