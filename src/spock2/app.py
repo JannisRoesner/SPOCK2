@@ -29,11 +29,12 @@ from spock2.config.loader import (
     default_writable_config_path,
     load_config_result,
     save_config,
+    user_config_path,
 )
-from spock2.config.models import AppConfig
+from spock2.config.models import AppConfig, apply_config_inplace
 from spock2.domain.notes import Note
 from spock2.domain.orders import Order
-from spock2.domain.print_job import PrintJob, PrintJobStatus, SourceType
+from spock2.domain.print_job import PrintJob, PrintJobStatus, SourceType, utc_now_iso
 from spock2.domain.status import ApiStatus, ConnectionState
 from spock2.logging_setup import setup_logging
 from spock2.persistence import print_jobs
@@ -143,6 +144,8 @@ class ApplicationController(QObject):
         self.config = config
         self.config_path = config_path
         self.db_path = config.db.resolved_path()
+        # Nur Druckfehler dieser Sitzung anzeigen (Altlasten bleiben in der DB).
+        self._started_at_iso = utc_now_iso()
         migrate(self.db_path)
 
         self.riker = create_riker(config)
@@ -197,6 +200,7 @@ class ApplicationController(QObject):
             connection_monitor=self.monitor,
             orchestrator=self.orchestrator,
             on_settings_apply=self.apply_settings,
+            on_connection_test=self.test_api_connection,
         )
 
         self.printer_health.statuses_changed.connect(self.window.set_printer_statuses)
@@ -315,43 +319,38 @@ class ApplicationController(QObject):
         )
 
         # In-place mutieren (Orchestrator/PrintWorker halten dieselbe Referenz).
-        old.riker.base_url = new.riker.base_url
-        old.riker.connect_timeout_s = new.riker.connect_timeout_s
-        old.riker.read_timeout_s = new.riker.read_timeout_s
-        old.picard.enabled = new.picard.enabled
-        old.picard.base_url = new.picard.base_url
-        old.picard.session_id = new.picard.session_id
-        old.polling.riker_interval_s = new.polling.riker_interval_s
-        old.polling.picard_interval_s = new.polling.picard_interval_s
-        old.polling.interval_s = new.polling.riker_interval_s
-        old.print.auto_print_new_orders = new.print.auto_print_new_orders
-        old.print.auto_print_new_notes = new.print.auto_print_new_notes
-        old.print.auto_complete_after_print = new.print.auto_complete_after_print
-        old.print.transport = new.print.transport
-        old.ui.theme = new.ui.theme
-        old.ui.ui_scale = new.ui.ui_scale
-        old.ui.scale_with_window = new.ui.scale_with_window
-        old.ui.min_touch_target_px = new.ui.min_touch_target_px
-        old.ui.fullscreen = new.ui.fullscreen
-        old.ui.confirm_complete = new.ui.confirm_complete
-        old.ui.admin_pin = new.ui.admin_pin
-        old.printers.clear()
-        old.printers.update(
-            {name: p.model_copy(deep=True) for name, p in new.printers.items()}
-        )
+        apply_config_inplace(old, new)
 
         path = self.config_path or default_writable_config_path()
+        save_error: str | None = None
         try:
             self.config_path = save_config(path, old)
             logger.info("event=config_saved path=%s", self.config_path)
         except OSError as exc:
-            logger.exception("event=config_save_failed")
-            return f"Speichern fehlgeschlagen: {exc}"
+            logger.warning("event=config_save_failed path=%s err=%s", path, exc)
+            # Typisch: geladene Config liegt in /etc, der Kiosk-Nutzer darf dort
+            # nicht schreiben. Dann in die Benutzer-Config ausweichen, die beim
+            # nächsten Start ohnehin Vorrang hat.
+            fallback = user_config_path()
+            if fallback != path:
+                try:
+                    self.config_path = save_config(fallback, old)
+                    logger.info("event=config_saved path=%s", self.config_path)
+                except OSError as exc2:
+                    logger.exception("event=config_save_failed_fallback")
+                    save_error = f"Speichern fehlgeschlagen: {exc2}"
+            else:
+                save_error = f"Speichern fehlgeschlagen: {exc}"
 
+        # Auch ohne persistente Datei laufen Clients und UI mit den neuen Werten
+        # weiter – sonst zeigt der Dialog Werte, die nirgends gelten.
         self._rebind_api_clients()
         self._apply_poll_intervals()
         self._refresh_printer_role_queues()
         self.window.refresh_appearance()
+
+        if save_error is not None:
+            return f"{save_error} – Einstellungen gelten nur bis zum Neustart."
 
         hints: list[str] = ["Einstellungen gespeichert."]
         if need_restart:
@@ -360,7 +359,51 @@ class ApplicationController(QObject):
             )
         return " ".join(hints)
 
+    def test_api_connection(self, cfg: AppConfig) -> str:
+        """Prüft RIKER/PICARD mit den übergebenen Einstellungen (für Admin-UI)."""
+        probe = cfg.model_copy(deep=True)
+        # Kurze Timeouts: der Test läuft synchron aus dem Dialog.
+        probe.riker.connect_timeout_s = min(probe.riker.connect_timeout_s, 3.0)
+        probe.riker.read_timeout_s = min(probe.riker.read_timeout_s, 5.0)
+        probe.picard.connect_timeout_s = min(probe.picard.connect_timeout_s, 3.0)
+        probe.picard.read_timeout_s = min(probe.picard.read_timeout_s, 5.0)
+
+        lines: list[str] = []
+        riker = create_riker(probe)
+        try:
+            riker.test_connection()
+            lines.append(f"RIKER OK ({probe.riker.base_url})")
+        except Exception as exc:  # noqa: BLE001 – Ergebnis geht in den Dialog
+            logger.warning("event=connection_test_failed api=riker err=%s", exc)
+            lines.append(f"RIKER FEHLER: {exc}")
+        finally:
+            with contextlib.suppress(Exception):
+                riker.close()
+
+        picard = create_picard(probe)
+        if picard is None:
+            lines.append("PICARD deaktiviert")
+        else:
+            try:
+                picard.test_connection()
+                lines.append(f"PICARD OK ({probe.picard.base_url})")
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("event=connection_test_failed api=picard err=%s", exc)
+                lines.append(f"PICARD FEHLER: {exc}")
+            finally:
+                with contextlib.suppress(Exception):
+                    picard.close()
+
+        return "\n".join(lines)
+
     def _rebind_api_clients(self) -> None:
+        logger.info(
+            "event=api_rebind riker=%s picard=%s ssl_verify=%s ca_bundle=%s",
+            self.config.riker.base_url,
+            self.config.picard.base_url if self.config.picard.enabled else "-",
+            self.config.tls.ssl_verify,
+            self.config.tls.ca_bundle or "-",
+        )
         old_riker = self.riker
         self.riker = create_riker(self.config)
         self.order_service.set_client(self.riker)
@@ -493,6 +536,7 @@ class ApplicationController(QObject):
     @Slot(str)
     def _on_print_error(self, message: str) -> None:
         logger.warning("event=print_worker_error msg=%s", message)
+        self.window.show_problem(f"Druck: {message}")
 
     def _kick_print_drain(self) -> None:
         if self._print_worker is None:
@@ -510,12 +554,14 @@ class ApplicationController(QObject):
                 pending = print_jobs.count_by_status(conn, PrintJobStatus.PENDING)
                 submitted = print_jobs.count_by_status(conn, PrintJobStatus.SUBMITTED)
                 printing = print_jobs.count_by_status(conn, PrintJobStatus.PRINTING)
+                failed = print_jobs.count_failed_since(conn, self._started_at_iso)
             total = pending + submitted + printing
         except Exception as exc:  # noqa: BLE001
             logger.warning("event=pending_count_failed err=%s", exc)
             return
         self.monitor.set_pending_print_jobs(total)
         self.window.set_pending_jobs(total)
+        self.window.set_failed_jobs(failed)
 
     @Slot()
     def _refresh_printer_health(self) -> None:
@@ -568,21 +614,63 @@ class ApplicationController(QObject):
                 self.picard.close()
 
 
+def _report_fatal(title: str, detail: str, log_path: Path | None) -> None:
+    """Zeigt einen Startfehler als Dialog **und** auf stderr.
+
+    Beim Start über Startmenü/Desktop-Icon gibt es kein Terminal — ohne Dialog
+    wäre ein Fehlstart komplett unsichtbar.
+    """
+    hint = f"\n\nLogdatei: {log_path}" if log_path else ""
+    print(f"{title}: {detail}{hint}", file=sys.stderr)
+    with contextlib.suppress(Exception):
+        from PySide6.QtWidgets import QMessageBox
+
+        box = QMessageBox()
+        box.setIcon(QMessageBox.Icon.Critical)
+        box.setWindowTitle("SPOCK2 – Startfehler")
+        box.setText(title)
+        box.setInformativeText(f"{detail}{hint}")
+        box.exec()
+
+
 def main(argv: list[str] | None = None) -> int:
     """Lädt Config, Logging, DB und startet die PySide6-UI."""
     _ = argv  # reserved for future CLI flags
-    loaded = load_config_result()
-    config = loaded.config
-    setup_logging(
-        level=config.logging.level,
-        file_path=config.logging.resolved_file_path(),
-        max_bytes=config.logging.max_bytes,
-        backup_count=config.logging.backup_count,
-        fmt=config.logging.format,
-    )
     # Segfaults im Qt-/Treiber-Stack sonst spurlos: Python-Frames auf stderr.
     with contextlib.suppress(Exception):
         faulthandler.enable()
+
+    # QApplication zuerst: nur damit lassen sich Startfehler als Dialog zeigen.
+    # Offscreen/headless tests: QT_QPA_PLATFORM=offscreen
+    app = QApplication(sys.argv if argv is None else argv)
+    app.setApplicationName("SPOCK2")
+    app.setOrganizationName("SPOCK2")
+    # Wayland nimmt die app_id hierher: ohne das bleibt das Fenster im Dock
+    # ohne Icon und ohne Bezug zum Startmenü-Eintrag.
+    app.setDesktopFileName("spock2")
+    app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
+    icon = app_icon()
+    if not icon.isNull():
+        app.setWindowIcon(icon)
+
+    log_path: Path | None = None
+    try:
+        loaded = load_config_result()
+        config = loaded.config
+        log_path = config.logging.resolved_file_path()
+        setup_logging(
+            level=config.logging.level,
+            file_path=log_path,
+            max_bytes=config.logging.max_bytes,
+            backup_count=config.logging.backup_count,
+            fmt=config.logging.format,
+        )
+    except Exception as exc:  # noqa: BLE001 – Startfehler muss sichtbar werden
+        with contextlib.suppress(Exception):
+            setup_logging()
+        logger.exception("event=config_load_failed")
+        _report_fatal("Konfiguration konnte nicht geladen werden", str(exc), log_path)
+        return 2
 
     logger.info("event=app_start version=%s", __import__("spock2").__version__)
     logger.info(
@@ -593,26 +681,32 @@ def main(argv: list[str] | None = None) -> int:
         config.routing.station_role,
         config.ui.fullscreen,
     )
-
-    # Offscreen/headless tests: QT_QPA_PLATFORM=offscreen
-    app = QApplication(sys.argv if argv is None else argv)
+    logger.info(
+        "event=tls_config ssl_verify=%s ca_bundle=%s",
+        config.tls.ssl_verify,
+        config.tls.ca_bundle or "-",
+    )
     logger.info(
         "event=qt_runtime pyside=%s qt=%s platform=%s",
         PySide6.__version__,
         QLibraryInfo.version().toString(),
         app.platformName(),
     )
-    app.setApplicationName("SPOCK2")
-    app.setOrganizationName("SPOCK2")
-    app.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
-    icon = app_icon()
-    if not icon.isNull():
-        app.setWindowIcon(icon)
+    if loaded.path is None:
+        logger.warning(
+            "event=config_missing hint=Keine spock2.toml gefunden, Defaults aktiv"
+        )
 
     # Theme vor dem Fenster (Screen-basierte Scale); MainWindow skaliert nach Show nach.
     apply_appearance(app, config.ui)
 
-    controller = ApplicationController(config, config_path=loaded.path)
+    try:
+        controller = ApplicationController(config, config_path=loaded.path)
+    except Exception as exc:  # noqa: BLE001 – Startfehler muss sichtbar werden
+        logger.exception("event=startup_failed")
+        _report_fatal("SPOCK2 konnte nicht starten", str(exc), log_path)
+        return 3
+
     app.aboutToQuit.connect(controller.shutdown)
 
     # Window already shown in MainWindow.__init__ via fullscreen/maximized

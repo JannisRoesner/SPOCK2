@@ -54,9 +54,12 @@ def format_wait_time(created_at: Any, *, now: datetime | None = None) -> tuple[s
         return ("< 1 Min", False)
     if minutes < 60:
         return (f"{minutes} Min", hot)
-    hours = minutes // 60
-    rem = minutes % 60
-    return (f"{hours} h {rem:02d} Min", True)
+    hours, rem = divmod(minutes, 60)
+    if hours < 24:
+        return (f"{hours}:{rem:02d} h", True)
+    # Alte Testbestellungen sonst als „893 h 36 Min“ – unlesbar.
+    days, rest_hours = divmod(hours, 24)
+    return (f"{days} T {rest_hours} h", True)
 
 
 def _group_items(items: list[OrderItem]) -> list[tuple[str | None, list[OrderItem]]]:
@@ -89,13 +92,17 @@ class OrderCard(QFrame):
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setFrameShadow(QFrame.Shadow.Plain)
         self._order_id = order.id
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        # Vertikal Minimum: die Karte darf nie unter ihren Inhalt schrumpfen,
+        # sonst werden Artikel und Buttons abgeschnitten.
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        self.setMinimumWidth(280)
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 14, 16, 14)
-        root.setSpacing(8)
+        root.setContentsMargins(12, 8, 12, 10)
+        root.setSpacing(2)
 
         header = QHBoxLayout()
+        header.setSpacing(8)
         table = QLabel(order.display_table())
         table.setObjectName("tableNumber")
         table.setWordWrap(True)
@@ -104,7 +111,7 @@ class OrderCard(QFrame):
         wait_text, hot = format_wait_time(order.created_at)
         wait = QLabel(wait_text)
         wait.setObjectName("waitTimeHot" if hot else "waitTime")
-        wait.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        wait.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         header.addWidget(wait)
         root.addLayout(header)
 
@@ -139,7 +146,8 @@ class OrderCard(QFrame):
             root.addWidget(empty)
 
         buttons = QHBoxLayout()
-        buttons.setSpacing(12)
+        buttons.setSpacing(8)
+        buttons.setContentsMargins(0, 6, 0, 0)
         self._done_btn = QPushButton("Erledigt")
         self._done_btn.setObjectName("doneButton")
         self._done_btn.setEnabled(not completing)

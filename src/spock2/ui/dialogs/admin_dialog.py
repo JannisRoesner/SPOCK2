@@ -5,13 +5,16 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QInputDialog,
@@ -19,6 +22,8 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -34,6 +39,7 @@ from spock2.config.models import (
 
 TestPrintCallback = Callable[[str], None]
 SettingsApplyCallback = Callable[[AppConfig], str | None]
+ConnectionTestCallback = Callable[[AppConfig], str]
 ListQueuesCallback = Callable[[PrintTransportMode], list[str]]
 
 _ROLE_LABELS: dict[PrinterRoleName, str] = {
@@ -50,6 +56,26 @@ _TRANSPORT_LABELS: dict[PrintTransportMode, str] = {
 }
 
 
+def _form(page: QWidget) -> QFormLayout:
+    """Formular-Layout, das lange Labels umbricht statt abzuschneiden."""
+    form = QFormLayout(page)
+    form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+    form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+    form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    form.setHorizontalSpacing(12)
+    form.setVerticalSpacing(8)
+    form.setContentsMargins(4, 4, 4, 4)
+    return form
+
+
+def _hint(text: str) -> QLabel:
+    label = QLabel(text)
+    label.setObjectName("adminHint")
+    label.setWordWrap(True)
+    return label
+
+
 class AdminDialog(QDialog):
     """Editierbare Config (APIs, Polling, Druck, Drucker) inkl. Testprints."""
 
@@ -59,6 +85,7 @@ class AdminDialog(QDialog):
         *,
         on_test_print: TestPrintCallback | None = None,
         on_apply: SettingsApplyCallback | None = None,
+        on_connection_test: ConnectionTestCallback | None = None,
         list_queues: ListQueuesCallback | None = None,
         parent: QWidget | None = None,
     ) -> None:
@@ -68,29 +95,30 @@ class AdminDialog(QDialog):
         self._working = config.model_copy(deep=True)
         self._on_test_print = on_test_print
         self._on_apply = on_apply
+        self._on_connection_test = on_connection_test
         self._list_queues = list_queues
         self._discovered_queues: list[str] = []
         self._result_config: AppConfig | None = None
 
-        touch = max(44, self._working.ui.min_touch_target_px)
-        if parent is not None and parent.isVisible():
-            geo = parent.geometry()
-            self.resize(max(720, int(geo.width() * 0.72)), max(560, int(geo.height() * 0.78)))
-        else:
-            self.setMinimumSize(720, 560)
-            self.resize(900, 700)
-        self.setMinimumSize(640, 480)
+        self._apply_dialog_geometry(parent)
+
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
         title = QLabel("SPOCK2 – Einstellungen")
         title.setObjectName("dialogTitle")
         layout.addWidget(title)
 
         tabs = QTabWidget()
-        tabs.addTab(self._build_api_tab(), "APIs")
-        tabs.addTab(self._build_polling_tab(), "Polling")
-        tabs.addTab(self._build_print_tab(), "Druck")
-        tabs.addTab(self._build_printers_tab(), "Drucker")
-        tabs.addTab(self._build_appearance_tab(), "Darstellung")
+        # Fünf kurze Reiter passen immer; Scroll-Pfeile würden nur Platz kosten.
+        tabs.setUsesScrollButtons(False)
+        tabs.tabBar().setExpanding(False)
+        tabs.tabBar().setElideMode(Qt.TextElideMode.ElideRight)
+        tabs.addTab(self._scrollable(self._build_api_tab()), "APIs")
+        tabs.addTab(self._scrollable(self._build_polling_tab()), "Polling")
+        tabs.addTab(self._scrollable(self._build_print_tab()), "Druck")
+        tabs.addTab(self._scrollable(self._build_printers_tab()), "Drucker")
+        tabs.addTab(self._scrollable(self._build_appearance_tab()), "Darstellung")
         layout.addWidget(tabs, stretch=1)
 
         buttons = QDialogButtonBox(
@@ -103,18 +131,42 @@ class AdminDialog(QDialog):
         cancel_btn = buttons.button(QDialogButtonBox.StandardButton.Cancel)
         if save_btn is not None:
             save_btn.setText("Speichern")
-            save_btn.setMinimumHeight(touch)
             save_btn.setObjectName("primaryButton")
         if apply_btn is not None:
             apply_btn.setText("Übernehmen")
-            apply_btn.setMinimumHeight(touch)
+            apply_btn.clicked.connect(self._on_apply_clicked)
         if cancel_btn is not None:
             cancel_btn.setText("Abbrechen")
-            cancel_btn.setMinimumHeight(touch)
         buttons.accepted.connect(self._on_save)
         buttons.rejected.connect(self.reject)
-        buttons.button(QDialogButtonBox.StandardButton.Apply).clicked.connect(self._on_apply_clicked)
         layout.addWidget(buttons)
+
+    def _apply_dialog_geometry(self, parent: QWidget | None) -> None:
+        """Passt den Dialog an den Bildschirm an (nie größer als sichtbar)."""
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        available = screen.availableGeometry() if screen is not None else None
+        max_w, max_h = (1024, 768)
+        if available is not None:
+            max_w = max(480, int(available.width() * 0.92))
+            max_h = max(400, int(available.height() * 0.92))
+        width, height = min(940, max_w), min(720, max_h)
+        if parent is not None and parent.isVisible():
+            geo = parent.geometry()
+            width = min(max(720, int(geo.width() * 0.8)), max_w)
+            height = min(max(560, int(geo.height() * 0.85)), max_h)
+        self.setMinimumSize(min(520, width), min(420, height))
+        self.resize(width, height)
+
+    @staticmethod
+    def _scrollable(page: QWidget) -> QWidget:
+        """Tab-Inhalte scrollbar machen – sonst überlappen sie auf kleinen Displays."""
+        area = QScrollArea()
+        area.setWidgetResizable(True)
+        area.setFrameShape(QScrollArea.Shape.NoFrame)
+        area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        page.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        area.setWidget(page)
+        return area
 
     @property
     def result_config(self) -> AppConfig | None:
@@ -122,27 +174,103 @@ class AdminDialog(QDialog):
 
     def _build_api_tab(self) -> QWidget:
         page = QWidget()
-        form = QFormLayout(page)
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        outer = QVBoxLayout(page)
+        outer.setContentsMargins(4, 4, 4, 4)
+        outer.setSpacing(10)
+
+        endpoints = QGroupBox("Endpunkte")
+        form = _form(endpoints)
 
         self._riker_url = QLineEdit(self._working.riker.base_url)
-        self._riker_url.setMinimumHeight(44)
+        self._riker_url.setPlaceholderText("https://riker.example.de")
         form.addRow("RIKER API Base URL", self._riker_url)
 
         self._picard_enabled = QCheckBox("PICARD aktiv")
         self._picard_enabled.setChecked(self._working.picard.enabled)
-        self._picard_enabled.setMinimumHeight(44)
         form.addRow("", self._picard_enabled)
 
         self._picard_url = QLineEdit(self._working.picard.base_url)
-        self._picard_url.setMinimumHeight(44)
+        self._picard_url.setPlaceholderText("https://picard.example.de")
         form.addRow("PICARD API Base URL", self._picard_url)
+        outer.addWidget(endpoints)
+
+        tls = QGroupBox("TLS / Zertifikate")
+        tls_form = _form(tls)
+        self._ssl_verify = QCheckBox("Server-Zertifikat prüfen")
+        self._ssl_verify.setChecked(self._working.tls.ssl_verify)
+        tls_form.addRow("", self._ssl_verify)
+
+        ca_row = QWidget()
+        ca_layout = QHBoxLayout(ca_row)
+        ca_layout.setContentsMargins(0, 0, 0, 0)
+        ca_layout.setSpacing(8)
+        self._ca_bundle = QLineEdit(self._working.tls.ca_bundle)
+        self._ca_bundle.setPlaceholderText("leer = System-Zertifikate")
+        ca_layout.addWidget(self._ca_bundle, stretch=1)
+        browse = QPushButton("…")
+        browse.setObjectName("secondaryButton")
+        browse.setMaximumWidth(64)
+        browse.clicked.connect(self._pick_ca_bundle)
+        ca_layout.addWidget(browse)
+        tls_form.addRow("CA-Bundle (PEM)", ca_row)
+
+        tls_form.addRow(
+            _hint(
+                "Selbst ausgestellte Zertifikate: entweder das CA-Bundle (PEM) "
+                "hinterlegen oder die Prüfung abschalten. Ohne Prüfung ist die "
+                "Verbindung verschlüsselt, aber nicht gegen Fälschung geschützt."
+            )
+        )
+        outer.addWidget(tls)
+
+        test_row = QHBoxLayout()
+        test_row.setSpacing(8)
+        self._test_conn_btn = QPushButton("Verbindung testen")
+        self._test_conn_btn.setObjectName("secondaryButton")
+        self._test_conn_btn.clicked.connect(self._test_connection)
+        test_row.addWidget(self._test_conn_btn)
+        test_row.addStretch(1)
+        outer.addLayout(test_row)
+
+        self._conn_result = _hint("")
+        outer.addWidget(self._conn_result)
+        outer.addStretch(1)
         return page
+
+    def _pick_ca_bundle(self) -> None:
+        path, _filter = QFileDialog.getOpenFileName(
+            self,
+            "CA-Bundle wählen",
+            self._ca_bundle.text() or "/etc/ssl/certs",
+            "Zertifikate (*.pem *.crt *.cer);;Alle Dateien (*)",
+        )
+        if path:
+            self._ca_bundle.setText(path)
+
+    def _test_connection(self) -> None:
+        if self._on_connection_test is None:
+            self._conn_result.setText("Kein Verbindungstest verdrahtet.")
+            return
+        cfg = self._collect()
+        if cfg is None:
+            return
+        self._conn_result.setText("Teste Verbindung…")
+        self._test_conn_btn.setEnabled(False)
+        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        # Der Test blockiert den Event-Loop; ohne repaint bleibt der Dialog leer.
+        self._conn_result.repaint()
+        try:
+            report = self._on_connection_test(cfg)
+        except Exception as exc:  # noqa: BLE001 – Ergebnis gehört in den Dialog
+            report = f"Test fehlgeschlagen: {exc}"
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+            self._test_conn_btn.setEnabled(True)
+        self._conn_result.setText(report)
 
     def _build_polling_tab(self) -> QWidget:
         page = QWidget()
-        form = QFormLayout(page)
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        form = _form(page)
 
         self._riker_interval = QDoubleSpinBox()
         self._riker_interval.setRange(0.5, 120.0)
@@ -150,7 +278,6 @@ class AdminDialog(QDialog):
         self._riker_interval.setDecimals(1)
         self._riker_interval.setSuffix(" s")
         self._riker_interval.setValue(self._working.polling.riker_interval_s)
-        self._riker_interval.setMinimumHeight(44)
         form.addRow("Polling-Intervall RIKER", self._riker_interval)
 
         self._picard_interval = QDoubleSpinBox()
@@ -159,69 +286,72 @@ class AdminDialog(QDialog):
         self._picard_interval.setDecimals(1)
         self._picard_interval.setSuffix(" s")
         self._picard_interval.setValue(self._working.polling.picard_interval_s)
-        self._picard_interval.setMinimumHeight(44)
         form.addRow("Polling-Intervall PICARD", self._picard_interval)
+        form.addRow(
+            _hint(
+                "Kürzere Intervalle bedeuten mehr Last auf RIKER/PICARD. "
+                "3 Sekunden sind für den Küchenbetrieb üblich."
+            )
+        )
         return page
 
     def _build_print_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
 
         self._auto_orders = QCheckBox("Neue Bestellungen automatisch drucken")
         self._auto_orders.setChecked(self._working.print.auto_print_new_orders)
-        self._auto_orders.setMinimumHeight(48)
         layout.addWidget(self._auto_orders)
 
         self._auto_notes = QCheckBox("Neue PICARD-Zettel automatisch drucken")
         self._auto_notes.setChecked(self._working.print.auto_print_new_notes)
-        self._auto_notes.setMinimumHeight(48)
         layout.addWidget(self._auto_notes)
 
         self._auto_complete = QCheckBox(
             "Bestellung nach erfolgreichem Druck als erledigt markieren"
         )
         self._auto_complete.setChecked(self._working.print.auto_complete_after_print)
-        self._auto_complete.setMinimumHeight(48)
         layout.addWidget(self._auto_complete)
 
-        hint = QLabel(
-            "Hinweis: Auto-Complete ist optional und standardmäßig aus "
-            "(Druck ≠ Erledigt)."
+        layout.addWidget(
+            _hint(
+                "Hinweis: Auto-Complete ist optional und standardmäßig aus "
+                "(Druck ≠ Erledigt)."
+            )
         )
-        hint.setWordWrap(True)
-        hint.setObjectName("adminHint")
-        layout.addWidget(hint)
         layout.addStretch(1)
         return page
 
     def _build_printers_tab(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(12)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(10)
 
-        transport_row = QHBoxLayout()
-        transport_row.setSpacing(12)
-        transport_row.addWidget(QLabel("Druck-Transport"))
+        transport_box = QGroupBox("Druck-Transport")
+        transport_grid = QGridLayout(transport_box)
+        transport_grid.setContentsMargins(12, 12, 12, 12)
+        transport_grid.setHorizontalSpacing(12)
+        transport_grid.setVerticalSpacing(8)
         self._transport = QComboBox()
-        self._transport.setMinimumHeight(44)
         for key, label in _TRANSPORT_LABELS.items():
             self._transport.addItem(label, key)
         idx = self._transport.findData(self._working.print.transport)
         self._transport.setCurrentIndex(max(0, idx))
         self._transport.currentIndexChanged.connect(self._on_transport_changed)
-        transport_row.addWidget(self._transport, stretch=1)
+        transport_grid.addWidget(self._transport, 0, 0)
         refresh_btn = QPushButton("Drucker aktualisieren")
         refresh_btn.setObjectName("secondaryButton")
-        refresh_btn.setMinimumHeight(44)
         refresh_btn.clicked.connect(self._refresh_queue_combos)
-        transport_row.addWidget(refresh_btn)
-        layout.addLayout(transport_row)
-
-        self._queue_status = QLabel("")
-        self._queue_status.setWordWrap(True)
-        self._queue_status.setObjectName("adminHint")
-        layout.addWidget(self._queue_status)
+        # Eigene Zeile: nebeneinander wurde der Button auf kleinen Displays
+        # bis zur Unlesbarkeit beschnitten.
+        transport_grid.addWidget(refresh_btn, 1, 0, Qt.AlignmentFlag.AlignLeft)
+        self._queue_status = _hint("")
+        transport_grid.addWidget(self._queue_status, 2, 0)
+        transport_grid.setColumnStretch(0, 1)
+        layout.addWidget(transport_box)
 
         self._printer_widgets: dict[PrinterRoleName, dict[str, object]] = {}
         profile_names = sorted(self._working.profiles.keys()) or ["tsp100", "pos5890k"]
@@ -230,20 +360,18 @@ class AdminDialog(QDialog):
             role_t: PrinterRoleName = role  # type: ignore[assignment]
             printer = self._printer_for_role(role_t)
             box = QGroupBox(_ROLE_LABELS[role_t])
-            form = QFormLayout(box)
-            form.setContentsMargins(12, 16, 12, 12)
-            form.setHorizontalSpacing(16)
-            form.setVerticalSpacing(10)
+            form = _form(box)
+            form.setContentsMargins(12, 12, 12, 12)
 
             enabled = QCheckBox("Aktiv")
             enabled.setChecked(printer.enabled if printer else True)
-            enabled.setMinimumHeight(40)
             form.addRow("", enabled)
 
             queue = QComboBox()
             queue.setEditable(True)
-            queue.setMinimumHeight(40)
             queue.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+            queue.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            queue.setMinimumContentsLength(12)
             current_queue = printer.queue if printer else f"spock-{role}"
             queue.currentTextChanged.connect(self._update_queue_warnings)
             form.addRow("Drucker / Queue", queue)
@@ -254,13 +382,17 @@ class AdminDialog(QDialog):
             form.addRow("", warn)
 
             profile = QComboBox()
-            profile.setMinimumHeight(40)
             for name in profile_names:
                 profile.addItem(name)
             current_profile = printer.profile if printer else profile_names[0]
             pidx = profile.findText(current_profile)
             profile.setCurrentIndex(max(0, pidx))
             form.addRow("Profil", profile)
+
+            test_btn = QPushButton(f"Test {_ROLE_LABELS[role_t]}")
+            test_btn.setObjectName("secondaryButton")
+            test_btn.clicked.connect(lambda _checked=False, r=role: self._test_print(r))
+            form.addRow("", test_btn)
 
             layout.addWidget(box)
             self._printer_widgets[role_t] = {
@@ -272,23 +404,12 @@ class AdminDialog(QDialog):
                 "initial_queue": current_queue,
             }
 
-        hint = QLabel(
-            "Tipp: Dieselbe Queue für Küche, Theke und Klein = Ein-Drucker-Betrieb. "
-            "Ein Wechsel des Druck-Transports erfordert einen Neustart der App."
+        layout.addWidget(
+            _hint(
+                "Tipp: Dieselbe Queue für Küche, Theke und Klein = Ein-Drucker-Betrieb. "
+                "Ein Wechsel des Druck-Transports erfordert einen Neustart der App."
+            )
         )
-        hint.setWordWrap(True)
-        hint.setObjectName("adminHint")
-        layout.addWidget(hint)
-
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(12)
-        for role in ("kitchen", "counter", "small"):
-            btn = QPushButton(f"Test {_ROLE_LABELS[role]}")  # type: ignore[index]
-            btn.setObjectName("secondaryButton")
-            btn.setMinimumHeight(48)
-            btn.clicked.connect(lambda _checked=False, r=role: self._test_print(r))
-            btn_row.addWidget(btn)
-        layout.addLayout(btn_row)
         layout.addStretch(1)
         self._refresh_queue_combos()
         return page
@@ -314,7 +435,8 @@ class AdminDialog(QDialog):
             else:
                 if queues:
                     self._queue_status.setText(
-                        f"{len(queues)} System-Drucker/Queues gefunden ({mode})."
+                        f"{len(queues)} System-Drucker/Queues gefunden ({mode}): "
+                        + ", ".join(queues)
                     )
                 else:
                     self._queue_status.setText(
@@ -355,18 +477,17 @@ class AdminDialog(QDialog):
             if not name:
                 warn.setText("Kein Drucker gewählt.")
             elif discovered and name not in discovered:
-                warn.setText("Drucker nicht in Systemliste – Name prüfen.")
+                warn.setText(
+                    "Drucker nicht in Systemliste – so schlägt jeder Druck fehl."
+                )
             else:
                 warn.setText("")
 
     def _build_appearance_tab(self) -> QWidget:
         page = QWidget()
-        form = QFormLayout(page)
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        touch = max(44, self._working.ui.min_touch_target_px)
+        form = _form(page)
 
         self._theme = QComboBox()
-        self._theme.setMinimumHeight(touch)
         themes: list[tuple[UiTheme, str]] = [
             ("light", "Light-Design"),
             ("dark", "Dark-Design"),
@@ -383,12 +504,10 @@ class AdminDialog(QDialog):
         self._ui_scale.setDecimals(2)
         self._ui_scale.setSuffix(" ×")
         self._ui_scale.setValue(self._working.ui.ui_scale)
-        self._ui_scale.setMinimumHeight(touch)
         form.addRow("UI-Skalierung", self._ui_scale)
 
         self._scale_with_window = QCheckBox("Mit Fenstergröße skalieren")
         self._scale_with_window.setChecked(self._working.ui.scale_with_window)
-        self._scale_with_window.setMinimumHeight(touch)
         form.addRow("", self._scale_with_window)
 
         self._touch_target = QDoubleSpinBox()
@@ -396,16 +515,22 @@ class AdminDialog(QDialog):
         self._touch_target.setDecimals(0)
         self._touch_target.setSuffix(" px")
         self._touch_target.setValue(self._working.ui.min_touch_target_px)
-        self._touch_target.setMinimumHeight(touch)
         form.addRow("Min. Touch-Höhe", self._touch_target)
 
-        hint = QLabel(
-            "Light/Dark gilt sofort nach Übernehmen. Die Skalierung passt Schriften "
-            "und Touch-Flächen an Bildschirm bzw. Fenstergröße an (Basis 1280×800)."
+        self._fullscreen = QCheckBox("Vollbild beim Start")
+        self._fullscreen.setChecked(self._working.ui.fullscreen)
+        form.addRow("", self._fullscreen)
+
+        self._confirm_complete = QCheckBox("„Erledigt“ bestätigen lassen")
+        self._confirm_complete.setChecked(self._working.ui.confirm_complete)
+        form.addRow("", self._confirm_complete)
+
+        form.addRow(
+            _hint(
+                "Light/Dark gilt sofort nach Übernehmen. Die Skalierung passt Schriften "
+                "und Touch-Flächen an Bildschirm bzw. Fenstergröße an (Basis 1280×800)."
+            )
         )
-        hint.setWordWrap(True)
-        hint.setObjectName("adminHint")
-        form.addRow(hint)
         return page
 
     def _printer_for_role(self, role: PrinterRoleName) -> PrinterConfig | None:
@@ -436,6 +561,8 @@ class AdminDialog(QDialog):
         cfg.riker.base_url = url
         cfg.picard.enabled = self._picard_enabled.isChecked()
         cfg.picard.base_url = picard_url or cfg.picard.base_url
+        cfg.tls.ssl_verify = self._ssl_verify.isChecked()
+        cfg.tls.ca_bundle = self._ca_bundle.text().strip()
         cfg.polling.riker_interval_s = float(self._riker_interval.value())
         cfg.polling.picard_interval_s = float(self._picard_interval.value())
         cfg.polling.interval_s = cfg.polling.riker_interval_s
@@ -472,6 +599,8 @@ class AdminDialog(QDialog):
         cfg.ui.ui_scale = float(self._ui_scale.value())
         cfg.ui.scale_with_window = self._scale_with_window.isChecked()
         cfg.ui.min_touch_target_px = int(self._touch_target.value())
+        cfg.ui.fullscreen = self._fullscreen.isChecked()
+        cfg.ui.confirm_complete = self._confirm_complete.isChecked()
 
         self._working = cfg
         return cfg
@@ -514,7 +643,19 @@ class AdminDialog(QDialog):
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, "Testprint fehlgeschlagen", str(exc))
             return
-        QMessageBox.information(self, "Testprint", f"Testprint für „{role}“ enqueued.")
+        queue = ""
+        widgets = self._printer_widgets.get(role)  # type: ignore[arg-type]
+        if widgets is not None:
+            combo = widgets["queue"]
+            if isinstance(combo, QComboBox):
+                queue = combo.currentText().strip()
+        target = f" → Queue „{queue}“" if queue else ""
+        QMessageBox.information(
+            self,
+            "Testprint",
+            f"Testprint für „{role}“{target} eingereiht.\n"
+            "Kommt nichts aus dem Drucker, zeigt die Statusleiste den Fehler.",
+        )
 
     @classmethod
     def open_admin(
@@ -523,6 +664,7 @@ class AdminDialog(QDialog):
         *,
         on_test_print: TestPrintCallback | None = None,
         on_apply: SettingsApplyCallback | None = None,
+        on_connection_test: ConnectionTestCallback | None = None,
         list_queues: ListQueuesCallback | None = None,
         parent: QWidget | None = None,
         admin_pin: str = "",
@@ -543,6 +685,7 @@ class AdminDialog(QDialog):
             config,
             on_test_print=on_test_print,
             on_apply=on_apply,
+            on_connection_test=on_connection_test,
             list_queues=list_queues,
             parent=parent,
         )

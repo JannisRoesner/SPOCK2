@@ -11,10 +11,13 @@ from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -39,8 +42,18 @@ from spock2.ui.widgets.status_bar import StatusBarWidget
 logger = logging.getLogger(__name__)
 
 SettingsApplyCallback = Callable[[AppConfig], str | None]
+ConnectionTestCallback = Callable[[AppConfig], str]
 
-__all__ = ["MainWindow", "load_stylesheet"]
+__all__ = ["MainWindow", "load_stylesheet", "wanted_columns"]
+
+# Zielbreite einer Bestellkarte; darüber wird mehrspaltig gelayoutet.
+_CARD_TARGET_WIDTH = 380
+_MAX_CARD_COLUMNS = 4
+
+
+def wanted_columns(width: int) -> int:
+    """Spaltenzahl für die Kartenfläche – mindestens 1, maximal ``_MAX_CARD_COLUMNS``."""
+    return max(1, min(_MAX_CARD_COLUMNS, width // _CARD_TARGET_WIDTH))
 
 
 class MainWindow(QMainWindow):
@@ -55,6 +68,7 @@ class MainWindow(QMainWindow):
         connection_monitor: ConnectionMonitor | None = None,
         orchestrator: Any | None = None,
         on_settings_apply: SettingsApplyCallback | None = None,
+        on_connection_test: ConnectionTestCallback | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -64,13 +78,24 @@ class MainWindow(QMainWindow):
         self._monitor = connection_monitor
         self._orchestrator = orchestrator
         self._on_settings_apply = on_settings_apply
+        self._on_connection_test = on_connection_test
         self._cards: dict[int, OrderCard] = {}
+        self._card_order: list[int] = []
+        self._columns = 0
+        # Früh gesetzt: setMinimumSize() unten kann bereits ein resizeEvent auslösen.
+        self._columns_widgets: list[QWidget] = []
+        self._column_layouts: list[QVBoxLayout] = []
         self._offline = False
+        self._tls_warned: set[str] = set()
+        self._printer_warned: set[str] = set()
         self._open_note_popups: set[str] = set()
         self._appear_timer = QTimer(self)
         self._appear_timer.setSingleShot(True)
         self._appear_timer.timeout.connect(self.refresh_appearance)
         self._last_appear_size: tuple[int, int] | None = None
+        self._banner_timer = QTimer(self)
+        self._banner_timer.setSingleShot(True)
+        self._banner_timer.timeout.connect(self._hide_banner)
 
         self.setWindowTitle("SPOCK2")
         self.setMinimumSize(800, 600)
@@ -85,14 +110,24 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
+        root.addWidget(self._build_banner())
+
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._cards_host = QWidget()
-        self._cards_layout = QVBoxLayout(self._cards_host)
-        self._cards_layout.setContentsMargins(12, 12, 12, 12)
-        self._cards_layout.setSpacing(10)
-        self._cards_layout.addStretch(1)
+        self._cards_layout = QHBoxLayout(self._cards_host)
+        self._cards_layout.setContentsMargins(8, 8, 8, 8)
+        self._cards_layout.setSpacing(8)
+        for _ in range(_MAX_CARD_COLUMNS):
+            column = QWidget()
+            column_layout = QVBoxLayout(column)
+            column_layout.setContentsMargins(0, 0, 0, 0)
+            column_layout.setSpacing(8)
+            column_layout.addStretch(1)
+            self._columns_widgets.append(column)
+            self._column_layouts.append(column_layout)
+            self._cards_layout.addWidget(column, stretch=1)
         self._scroll.setWidget(self._cards_host)
         root.addWidget(self._scroll, stretch=1)
 
@@ -139,6 +174,50 @@ class MainWindow(QMainWindow):
         self.activateWindow()
         QTimer.singleShot(0, self.refresh_appearance)
 
+    def _build_banner(self) -> QWidget:
+        """Auffälliger Hinweisstreifen für Probleme (z. B. Druckfehler)."""
+        self._banner = QFrame()
+        self._banner.setObjectName("problemBanner")
+        self._banner.setVisible(False)
+        self._banner.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum
+        )
+        row = QHBoxLayout(self._banner)
+        row.setContentsMargins(12, 6, 8, 6)
+        row.setSpacing(8)
+        self._banner_text = QLabel("")
+        self._banner_text.setObjectName("problemBannerText")
+        self._banner_text.setWordWrap(True)
+        row.addWidget(self._banner_text, stretch=1)
+        close_btn = QPushButton("OK")
+        close_btn.setObjectName("bannerButton")
+        close_btn.clicked.connect(self._hide_banner)
+        row.addWidget(close_btn)
+        return self._banner
+
+    def show_problem(self, message: str, *, timeout_ms: int = 45_000) -> None:
+        """Zeigt eine Problemmeldung im Hauptfenster (nicht modal)."""
+        self._show_banner(message, kind="problemBanner", timeout_ms=timeout_ms)
+
+    def show_hint(self, message: str, *, timeout_ms: int = 6_000) -> None:
+        """Kurze Bestätigung (z. B. Nachdruck eingereiht)."""
+        self._show_banner(message, kind="hintBanner", timeout_ms=timeout_ms)
+
+    def _show_banner(self, message: str, *, kind: str, timeout_ms: int) -> None:
+        self._banner_text.setText(message)
+        if self._banner.objectName() != kind:
+            self._banner.setObjectName(kind)
+            self._banner.style().unpolish(self._banner)
+            self._banner.style().polish(self._banner)
+        self._banner.setVisible(True)
+        if timeout_ms > 0:
+            self._banner_timer.start(timeout_ms)
+
+    @Slot()
+    def _hide_banner(self) -> None:
+        self._banner_timer.stop()
+        self._banner.setVisible(False)
+
     def refresh_appearance(self) -> None:
         """Wendet Theme + Skalierung auf die QApplication an."""
         app = QApplication.instance()
@@ -150,6 +229,7 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
+        self._reflow_cards()
         if not self._config.ui.scale_with_window:
             return
         size = event.size()
@@ -160,6 +240,43 @@ class MainWindow(QMainWindow):
             if dw < 40 and dh < 40:
                 return
         self._appear_timer.start(180)
+
+    def _wanted_columns(self) -> int:
+        return wanted_columns(self._scroll.viewport().width() or self.width())
+
+    def _reflow_cards(self, *, force: bool = False) -> None:
+        """Verteilt die Karten auf so viele Spalten, wie die Breite hergibt.
+
+        Jede Karte landet in der momentan kürzesten Spalte – so entstehen
+        keine großen Löcher, wenn eine Bestellung viel länger als die andere ist.
+        """
+        if not self._column_layouts:
+            return
+        columns = self._wanted_columns()
+        if columns == self._columns and not force:
+            return
+        self._columns = columns
+
+        for index, column_layout in enumerate(self._column_layouts):
+            for position in reversed(range(column_layout.count())):
+                item = column_layout.itemAt(position)
+                widget = item.widget() if item is not None else None
+                if widget is not None:
+                    column_layout.takeAt(position)
+                    widget.setParent(self._cards_host)
+            self._columns_widgets[index].setVisible(index < columns)
+
+        heights = [0] * columns
+        for order_id in self._card_order:
+            card = self._cards.get(order_id)
+            if card is None:
+                continue
+            target = heights.index(min(heights))
+            column_layout = self._column_layouts[target]
+            # Vor den Stretch am Ende einfügen.
+            column_layout.insertWidget(column_layout.count() - 1, card)
+            card.setVisible(True)
+            heights[target] += card.sizeHint().height() + column_layout.spacing()
 
     def _build_menu(self) -> None:
         menubar = self.menuBar()
@@ -217,6 +334,7 @@ class MainWindow(QMainWindow):
             self._offline = status.state.value == "offline"
             self._status.update_riker(status)
             self._update_empty_state(self._orders.orders)
+            self._maybe_warn_tls("RIKER", status)
             if self._monitor is not None:
                 self._monitor.set_riker_status(status)
 
@@ -224,8 +342,26 @@ class MainWindow(QMainWindow):
     def _on_picard_connection(self, status: object) -> None:
         if isinstance(status, ApiStatus):
             self._status.update_picard(status)
+            self._maybe_warn_tls("PICARD", status)
             if self._monitor is not None:
                 self._monitor.set_picard_status(status)
+
+    def _maybe_warn_tls(self, name: str, status: ApiStatus) -> None:
+        """Sagt bei Zertifikatsfehlern, wo die Lösung liegt – aber nur einmal.
+
+        Der Poller wiederholt den Fehler alle paar Sekunden; ohne diese Sperre
+        wäre der Streifen dauerhaft im Bild.
+        """
+        if status.error_kind != "TlsError":
+            self._tls_warned.discard(name)
+            return
+        if name in self._tls_warned:
+            return
+        self._tls_warned.add(name)
+        self.show_problem(
+            f"{name}: Zertifikat nicht vertrauenswürdig. Admin → Einstellungen → "
+            "APIs → TLS: CA-Bundle hinterlegen oder Prüfung abschalten."
+        )
 
     @Slot(object)
     def _on_app_status(self, status: object) -> None:
@@ -234,40 +370,62 @@ class MainWindow(QMainWindow):
 
     def set_printer_statuses(self, statuses: list[PrinterStatus]) -> None:
         self._status.update_printers(statuses)
+        self._maybe_warn_printers(statuses)
         if self._monitor is not None:
             self._monitor.set_printer_statuses(statuses)
+
+    def _maybe_warn_printers(self, statuses: list[PrinterStatus]) -> None:
+        """Ein Streifen pro neuem Druckerproblem – der Status wird zyklisch geprüft."""
+        broken = {
+            f"{s.role}: {s.last_error or 'nicht bereit'}"
+            for s in statuses
+            if not (s.online and s.accepting_jobs)
+        }
+        new = broken - self._printer_warned
+        self._printer_warned = broken
+        if new:
+            self.show_problem(
+                "Drucker nicht bereit – "
+                + "; ".join(sorted(new))
+                + ". Admin → Einstellungen → Drucker."
+            )
 
     def set_pending_jobs(self, count: int) -> None:
         self._status.update_pending_jobs(count)
         if self._monitor is not None:
             self._monitor.set_pending_print_jobs(count)
 
+    def set_failed_jobs(self, count: int) -> None:
+        self._status.update_failed_jobs(count)
+
     def _render_orders(self, orders: list[Any]) -> None:
         typed: list[Order] = [o for o in orders if isinstance(o, Order)]
         wanted = {o.id for o in typed}
 
-        # Entferne obsolete Cards
         for oid in list(self._cards):
             if oid not in wanted:
-                card = self._cards.pop(oid)
-                self._cards_layout.removeWidget(card)
-                card.deleteLater()
+                self._discard_card(self._cards.pop(oid))
 
-        # Stretch ans Ende: vor dem Stretch einfügen
-        stretch_index = self._cards_layout.count() - 1
         for order in typed:
             completing = self._orders.is_completing(order.id)
             if order.id in self._cards:
                 # Neu aufbauen für aktuelle Wartezeit / Items
-                old = self._cards.pop(order.id)
-                self._cards_layout.removeWidget(old)
-                old.deleteLater()
+                self._discard_card(self._cards.pop(order.id))
             card = OrderCard(order, completing=completing)
             card.done_clicked.connect(self._on_done_clicked)
             card.reprint_clicked.connect(self._on_reprint_clicked)
             self._cards[order.id] = card
-            self._cards_layout.insertWidget(max(0, stretch_index), card)
-            stretch_index = self._cards_layout.count() - 1
+
+        self._card_order = [o.id for o in typed]
+        self._reflow_cards(force=True)
+
+    @staticmethod
+    def _discard_card(card: OrderCard) -> None:
+        parent_layout = card.parentWidget().layout() if card.parentWidget() else None
+        if parent_layout is not None:
+            parent_layout.removeWidget(card)
+        card.setParent(None)
+        card.deleteLater()
 
     def _update_empty_state(self, orders: list[Any]) -> None:
         has_orders = any(isinstance(o, Order) for o in orders)
@@ -323,6 +481,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Nachdruck fehlgeschlagen", str(exc))
             return
         logger.info("event=reprint_enqueued order_id=%s", order_id)
+        self.show_hint(f"Nachdruck für #{order_id} eingereiht.")
 
     @Slot()
     def _on_write_note(self) -> None:
@@ -395,6 +554,7 @@ class MainWindow(QMainWindow):
             self._config,
             on_test_print=self._test_print,
             on_apply=self._on_settings_apply,
+            on_connection_test=self._on_connection_test,
             list_queues=list_system_queues,
             parent=self,
             admin_pin=self._config.ui.admin_pin,

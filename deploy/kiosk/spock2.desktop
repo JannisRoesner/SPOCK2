@@ -6,11 +6,15 @@ Name[de]=SPOCK2 Kiosk
 Comment=RIKER kitchen display and CUPS printing
 Comment[de]=RIKER-Küchenanzeige und CUPS-Druck
 Exec=/usr/share/spock2/kiosk/spock2-session.sh
+TryExec=/usr/bin/spock2
 Icon=spock2
 Terminal=false
 Categories=Office;Utility;
 StartupNotify=true
+# Muss zur Wayland-app_id passen (QApplication.setDesktopFileName("spock2")).
+StartupWMClass=spock2
 # Autostart nach Login: nach ~/.config/autostart/spock2.desktop kopieren
 X-GNOME-Autostart-enabled=true
-# Nur in grafischer Session starten
-OnlyShowIn=GNOME;Unity;XFCE;KDE;LXQt;MATE;
+# Kein OnlyShowIn: XDG_CURRENT_DESKTOP ist je nach Distribution/Session
+# unterschiedlich (z. B. "ubuntu:GNOME"); passt es nicht, fehlt der Eintrag im
+# Startmenü komplett. Der Eintrag soll überall sichtbar sein.

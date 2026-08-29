@@ -19,6 +19,11 @@ _REF_WIDTH = 1280
 _REF_HEIGHT = 800
 _SCALE_MIN = 0.75
 _SCALE_MAX = 1.75
+# Dämpfung der automatischen Skalierung: ein 1920×1280-Tablet ergäbe sonst
+# Faktor 1.5 – Karten und Statusleiste passen dann nicht mehr aufs Display.
+_AUTO_DAMPING = 0.4
+_AUTO_MIN = 0.85
+_AUTO_MAX = 1.2
 
 _PT_RE = re.compile(r"(\d+(?:\.\d+)?)pt")
 _PX_RE = re.compile(r"(\d+(?:\.\d+)?)px")
@@ -64,7 +69,8 @@ def effective_ui_scale(ui: UiConfig, window_size: QSize | None = None) -> float:
                 w, h = geo.width(), geo.height()
         if w > 0 and h > 0:
             auto = min(w / _REF_WIDTH, h / _REF_HEIGHT)
-            scale *= auto
+            auto = 1.0 + (auto - 1.0) * _AUTO_DAMPING
+            scale *= max(_AUTO_MIN, min(_AUTO_MAX, auto))
     return max(_SCALE_MIN, min(_SCALE_MAX, scale))
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -81,9 +82,14 @@ class PrintWorker(QObject):
             self.error.emit("Druck-Transport nicht verfügbar")
             return 0
 
+        retry_not_before = (
+            datetime.now(UTC) - timedelta(seconds=self.config.print.retry_delay_s)
+        ).isoformat()
         try:
             with connection(self.db_path) as conn:
-                pending = print_jobs.claim_pending(conn, limit=limit)
+                pending = print_jobs.claim_pending(
+                    conn, limit=limit, retry_not_before=retry_not_before
+                )
         except DbError as exc:
             self.error.emit(exc.message)
             return 0
@@ -115,12 +121,24 @@ class PrintWorker(QObject):
         try:
             cups_id = self.transport.submit(queue, data, title)
         except (PrintFailed, CupsUnavailable) as exc:
-            self._fail_job(job, exc.message or str(exc))
+            reason = exc.message or str(exc)
+            if exc.__cause__ is not None:
+                reason = f"{reason}: {exc.__cause__}"
+            self._fail_job(job, reason, queue=queue)
             return
 
         if cups_id is None:
-            self._fail_job(job, "Transport lieferte keine Job-ID")
+            self._fail_job(job, "Transport lieferte keine Job-ID", queue=queue)
             return
+
+        logger.info(
+            "event=print_submitted job=%s role=%s queue=%s transport_job=%s bytes=%s",
+            job.id,
+            job.target_role.value,
+            queue,
+            cups_id,
+            len(data),
+        )
 
         try:
             with connection(self.db_path) as conn:
@@ -137,17 +155,33 @@ class PrintWorker(QObject):
 
         self.job_updated.emit(updated)
 
-    def _fail_job(self, job: PrintJob, message: str) -> None:
+    def _fail_job(self, job: PrintJob, message: str, *, queue: str | None = None) -> None:
         if job.id is None:
             return
         try:
             with connection(self.db_path) as conn:
                 updated = print_jobs.mark_failed(conn, job.id, message)
-                if updated.attempts < self.max_attempts:
+                retrying = updated.attempts < self.max_attempts
+                if retrying:
                     updated = print_jobs.requeue_failed(conn, job.id)
                 self.job_updated.emit(updated)
         except (DbError, InvalidTransitionError) as exc:
             self.error.emit(exc.message)
+            return
+
+        logger.warning(
+            "event=print_failed job=%s role=%s queue=%s attempt=%s/%s retry=%s err=%s",
+            job.id,
+            job.target_role.value,
+            queue or "?",
+            updated.attempts,
+            self.max_attempts,
+            retrying,
+            message,
+        )
+        if not retrying:
+            target = f" (Queue „{queue}“)" if queue else ""
+            self.error.emit(f"{message}{target} – nach {updated.attempts} Versuchen aufgegeben")
 
     def _render_payload(
         self,

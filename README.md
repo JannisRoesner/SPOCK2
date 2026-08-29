@@ -30,8 +30,17 @@ cp config/spock2.example.toml config/spock2.toml
 # oder: set SPOCK2_CONFIG=... / export SPOCK2_CONFIG=...
 ```
 
-Config-Suche: `SPOCK2_CONFIG` → `config/spock2.toml` → `%APPDATA%/spock2/spock2.toml` (Windows)
-bzw. `/etc/spock2/` und `~/.config/spock2/` (Linux).
+Config-Suche in dieser Reihenfolge:
+
+1. `SPOCK2_CONFIG` (zeigt die Variable auf eine fehlende Datei, wird nur gewarnt
+   und weitergesucht – der Start bricht nicht ab)
+2. `config/spock2.toml` (Repo-/Dev-Layout)
+3. `~/.config/spock2/spock2.toml` bzw. `%APPDATA%/spock2/spock2.toml`
+4. `/etc/spock2/spock2.toml`
+
+Die Benutzer-Config gewinnt bewusst gegen `/etc`, damit Start aus Shell, Startmenü
+und systemd dieselbe Datei benutzen. Wird gar keine Datei gefunden, startet SPOCK2
+mit Defaults und schreibt Änderungen aus dem Einstellungsdialog in die Benutzer-Config.
 
 ## Start
 
@@ -78,7 +87,7 @@ Ausgabe typischerweise unter `dist/spock2/`.
 | Bereich | Inhalt |
 |--------|--------|
 | `[riker]` / `[picard]` | Basis-URLs, Timeouts, PICARD `enabled` |
-| `[tls]` | `ssl_verify` |
+| `[tls]` | `ssl_verify`, `ca_bundle` (siehe unten) |
 | `[polling]` / `[backoff]` | Poll-Intervall, Exponential Backoff |
 | `[printers.*]` | Rolle → `queue` + Profil |
 | `[routing]` | `station_role`, Kategorie→Rollen |
@@ -86,6 +95,29 @@ Ausgabe typischerweise unter `dist/spock2/`.
 | `[ui]` | Vollbild / Kiosk / Theme |
 | `[logging]` / `[db]` | Log-Level, DB-Pfad |
 | `[diagnostics]` | Diagnose-Flags |
+
+### HTTPS mit eigenem Zertifikat
+
+Meldet die Statusleiste `RIKER: Zertifikatsfehler` (Log: `CERTIFICATE_VERIFY_FAILED`),
+kennt der Client die ausstellende CA nicht. Zwei Wege, beide unter
+**Einstellungen → APIs → TLS / Zertifikate** einstellbar:
+
+- **Empfohlen:** CA-Bundle hinterlegen (`tls.ca_bundle`, PEM-Datei der eigenen CA).
+- **Notlösung:** `tls.ssl_verify = false` – die Verbindung bleibt verschlüsselt,
+  ist aber nicht gegen Fälschung geschützt.
+
+„Verbindung testen“ im selben Reiter prüft RIKER und PICARD mit den aktuell im
+Dialog eingestellten Werten, bevor gespeichert wird.
+
+## Fehlersuche
+
+- **Start aus Startmenü/Icon tut nichts:** SPOCK2 zeigt Startfehler seit 0.1.3 als
+  Dialog. Zusätzlich landen Fehler im Log (`~/.local/state/spock2/spock2.log`,
+  Windows `%LOCALAPPDATA%/spock2/`); der Kiosk-Starter schreibt stderr nach
+  `~/.local/state/spock2/session.log`.
+- **Drucke kommen nicht:** Die Statusleiste zeigt `Druckfehler: n`, das Log
+  `event=print_failed … queue=… err=…`. Häufigste Ursache ist ein Queue-Name, den
+  das System nicht kennt – der Drucker-Reiter markiert das rot.
 
 ## Architektur (Kurz)
 

@@ -28,11 +28,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-Environment=SPOCK2_CONFIG=/etc/spock2/spock2.toml
-# Fallback, falls kein System-Config-Pfad:
+# Ohne SPOCK2_CONFIG sucht SPOCK2 selbst:
+#   ./config/spock2.toml → ~/.config/spock2/spock2.toml → /etc/spock2/spock2.toml
+# Nur setzen, wenn die Datei wirklich existiert:
 # Environment=SPOCK2_CONFIG=%h/.config/spock2/spock2.toml
 
-ExecStart=/usr/bin/spock2
+ExecStart=/usr/share/spock2/kiosk/spock2-session.sh
 Restart=on-failure
 RestartSec=5
 

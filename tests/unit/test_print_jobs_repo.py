@@ -135,3 +135,38 @@ def test_claim_pending_fifo(tmp_path: Path) -> None:
         j2 = print_jobs.create_job(conn, _job(source_id="2", payload_hash="b"))
         claimed = print_jobs.claim_pending(conn, limit=2)
         assert [c.id for c in claimed] == [j1.id, j2.id]
+
+
+def test_claim_pending_holds_back_fresh_retries(tmp_path: Path) -> None:
+    """Sonst verbraucht ein defekter Drucker alle Versuche in Sekunden."""
+    db = tmp_path / "retry_delay.db"
+    migrate(db)
+    with connection(db) as conn:
+        fresh = print_jobs.create_job(conn, _job(source_id="1", payload_hash="a"))
+        retried = print_jobs.create_job(conn, _job(source_id="2", payload_hash="b"))
+        assert retried.id is not None
+        print_jobs.mark_failed(conn, retried.id, "CUPS weg")
+        print_jobs.requeue_failed(conn, retried.id)
+
+        past = "2000-01-01T00:00:00+00:00"
+        future = "2999-01-01T00:00:00+00:00"
+
+        # Retry-Fenster noch nicht erreicht → nur der unversuchte Job.
+        claimed = print_jobs.claim_pending(conn, limit=5, retry_not_before=past)
+        assert [c.id for c in claimed] == [fresh.id]
+
+        # Wartezeit vorbei → Retry darf wieder mit.
+        claimed = print_jobs.claim_pending(conn, limit=5, retry_not_before=future)
+        assert [c.id for c in claimed] == [fresh.id, retried.id]
+
+
+def test_count_failed_since(tmp_path: Path) -> None:
+    db = tmp_path / "failed.db"
+    migrate(db)
+    with connection(db) as conn:
+        created = print_jobs.create_job(conn, _job())
+        assert created.id is not None
+        assert print_jobs.count_failed_since(conn, "2000-01-01T00:00:00+00:00") == 0
+        print_jobs.mark_failed(conn, created.id, "boom")
+        assert print_jobs.count_failed_since(conn, "2000-01-01T00:00:00+00:00") == 1
+        assert print_jobs.count_failed_since(conn, "2999-01-01T00:00:00+00:00") == 0

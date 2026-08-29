@@ -28,7 +28,10 @@ User=spock
 Group=spock
 # SupplementaryGroups=lp
 
-Environment=SPOCK2_CONFIG=/etc/spock2/spock2.toml
+# Nur setzen, wenn /etc/spock2/spock2.toml wirklich existiert (das Paket liefert
+# nur .example). Ohne die Variable sucht SPOCK2 selbst:
+#   ~/.config/spock2/spock2.toml → /etc/spock2/spock2.toml
+# Environment=SPOCK2_CONFIG=/etc/spock2/spock2.toml
 # Display nur setzen, wenn die Unit wirklich die GUI startet:
 # Environment=DISPLAY=:0
 # Environment=XAUTHORITY=/home/spock/.Xauthority

@@ -99,20 +99,36 @@ def claim_pending(
     conn: sqlite3.Connection,
     *,
     limit: int = 1,
+    retry_not_before: str | None = None,
 ) -> list[PrintJob]:
     """Holt pending Jobs in FIFO-Reihenfolge (für PrintWorker).
 
     Status bleibt ``pending`` bis Submit; Caller erhöht attempts bei Submit.
+
+    ``retry_not_before`` (ISO-UTC) hält Retries zurück: Jobs mit ``attempts > 0``
+    werden erst wieder geholt, wenn ihr ``updated_at`` älter ist. Ohne diese
+    Bremse verbraucht ein defekter Drucker alle Versuche in Sekunden.
     """
-    rows = conn.execute(
-        """
-        SELECT * FROM print_jobs
-        WHERE status = ?
-        ORDER BY id ASC
-        LIMIT ?
-        """,
-        (PrintJobStatus.PENDING.value, limit),
-    ).fetchall()
+    if retry_not_before is None:
+        rows = conn.execute(
+            """
+            SELECT * FROM print_jobs
+            WHERE status = ?
+            ORDER BY id ASC
+            LIMIT ?
+            """,
+            (PrintJobStatus.PENDING.value, limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT * FROM print_jobs
+            WHERE status = ? AND (attempts = 0 OR updated_at <= ?)
+            ORDER BY id ASC
+            LIMIT ?
+            """,
+            (PrintJobStatus.PENDING.value, retry_not_before, limit),
+        ).fetchall()
     return [_row_to_job(r) for r in rows]
 
 
@@ -227,6 +243,18 @@ def count_by_status(conn: sqlite3.Connection, status: PrintJobStatus) -> int:
     row = conn.execute(
         "SELECT COUNT(*) AS c FROM print_jobs WHERE status = ?",
         (status.value,),
+    ).fetchone()
+    return int(row["c"]) if row else 0
+
+
+def count_failed_since(conn: sqlite3.Connection, since_iso: str) -> int:
+    """Endgültig fehlgeschlagene Jobs ab ``since_iso`` (ISO-UTC)."""
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS c FROM print_jobs
+        WHERE status = ? AND updated_at >= ?
+        """,
+        (PrintJobStatus.FAILED.value, since_iso),
     ).fetchone()
     return int(row["c"]) if row else 0
 

@@ -194,6 +194,20 @@ class AppConfig(BaseModel):
         return None
 
 
+def apply_config_inplace(target: AppConfig, source: AppConfig) -> AppConfig:
+    """Übernimmt **alle** Abschnitte aus ``source`` in ``target``.
+
+    Die Objekt-Identität von ``target`` bleibt erhalten, weil Orchestrator und
+    Worker dieselbe Referenz halten. Die Übernahme läuft generisch über
+    ``model_fields``: so kann kein Abschnitt (z. B. ``tls``) vergessen werden,
+    wenn die Config wächst.
+    """
+    updated = source.model_copy(deep=True)
+    for name in AppConfig.model_fields:
+        setattr(target, name, getattr(updated, name))
+    return target
+
+
 def default_state_dir() -> Path:
     """Standard-Zustandspfad (Windows: %LOCALAPPDATA%/spock2, sonst ~/.local/state/spock2)."""
     if sys.platform == "win32":

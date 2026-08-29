@@ -1,3 +1,16 @@
+spock2 (0.1.3-1) UNRELEASED; urgency=medium
+
+  * Start from menu/desktop: config search prefers the user config, a missing
+    SPOCK2_CONFIG no longer aborts, and startup errors show a dialog.
+  * Settings dialog: scrollable tabs, screen-aware size, TLS section
+    (ssl_verify / ca_bundle) plus connection test.
+  * Compact typography and multi-column order cards; status bar elides instead
+    of cutting words and names the actual error.
+  * Print failures are visible: retry delay honoured, failure log with queue and
+    reason, banner in the main window, failure counter in the status bar.
+
+ -- SPOCK2 Contributors <spock2@localhost>  Sat, 29 Aug 2026 22:40:00 +0200
+
 spock2 (0.1.2-1) UNRELEASED; urgency=medium
 
   * Give each thread its own pycups connection (shared libcups socket crashed).

@@ -21,9 +21,11 @@ session_id = ""
 kitchen_note_types = ["anKueche", "anKüche", "kueche", "küche"]
 
 [tls]
-# TLS-Zertifikatsprüfung (System-CAs). Nur in Dev bewusst auf false setzen.
+# TLS-Zertifikatsprüfung. Auch über Einstellungen → APIs änderbar.
+# Selbst ausgestelltes Zertifikat auf RIKER/PICARD? Entweder ca_bundle setzen
+# (empfohlen) oder ssl_verify = false (verschlüsselt, aber nicht fälschungssicher).
 ssl_verify = true
-# Optional: Pfad zu CA-Bundle (leer = System-Default)
+# Optional: Pfad zu CA-Bundle im PEM-Format (leer = System-Zertifikate)
 ca_bundle = ""
 
 [timeouts]

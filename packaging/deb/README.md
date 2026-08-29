@@ -46,7 +46,7 @@ Das `debian/`-Verzeichnis liegt unter `packaging/deb/debian/`. debhelper erwarte
 cd /pfad/zu/SPOCK2
 ln -sfn packaging/deb/debian debian
 dpkg-buildpackage -us -uc -b
-# Ergebnis eine Ebene höher: ../spock2_0.1.2-1_*.deb
+# Ergebnis eine Ebene höher: ../spock2_0.1.3-1_*.deb
 ```
 
 `debian/rules` installiert das Wheel nach `usr/`, plus udev/systemd/Kiosk/Config-Example.
@@ -61,17 +61,20 @@ vagrant ssh -c 'cd /vagrant && ln -sfn packaging/deb/debian debian && dpkg-build
 ## Installation auf dem Zielgerät
 
 ```bash
-sudo apt install -y ./spock2_0.1.2-1_amd64.deb
+sudo apt install -y ./spock2_0.1.3-1_amd64.deb
 # oder:
-sudo dpkg -i spock2_0.1.2-1_amd64.deb
+sudo dpkg -i spock2_0.1.3-1_amd64.deb
 sudo apt-get install -f   # fehlende Depends nachziehen
 ```
 
 Nachinstallieren:
 
 ```bash
+# Systemweit …
 sudo cp /etc/spock2/spock2.toml.example /etc/spock2/spock2.toml
 sudoedit /etc/spock2/spock2.toml
+# … oder pro Benutzer (gewinnt gegen /etc, legt der Kiosk-Starter sonst selbst an):
+install -Dm600 /etc/spock2/spock2.toml.example ~/.config/spock2/spock2.toml
 # Serials in udev-Regeln eintragen, neu laden:
 sudo udevadm control --reload-rules && sudo udevadm trigger
 # CUPS-Queues: siehe /usr/share/doc/spock2/cups-README.md
