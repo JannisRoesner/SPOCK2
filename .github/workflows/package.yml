@@ -28,7 +28,7 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       is_tag: ${{ steps.meta.outputs.is_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve version
         id: meta
@@ -48,7 +48,7 @@ jobs:
     needs: version
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Enable long paths
         shell: pwsh
@@ -58,7 +58,7 @@ jobs:
           git config --system core.longpaths true
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -89,7 +89,7 @@ jobs:
           Get-ChildItem "artifacts" | Format-Table Name, Length
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: spock2-windows-amd64
           path: artifacts/*.zip
@@ -100,7 +100,7 @@ jobs:
     needs: version
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Debian packaging tools
         run: |
@@ -127,7 +127,7 @@ jobs:
           dpkg-deb -f artifacts/spock2_*.deb Package Version Architecture Depends
 
       - name: Upload Debian artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: spock2-linux-deb
           path: artifacts/*.deb
@@ -140,7 +140,7 @@ jobs:
     continue-on-error: true
     container: fedora:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install RPM build tools
         run: |
@@ -170,7 +170,7 @@ jobs:
 
       - name: Upload RPM artifact
         if: success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: spock2-linux-rpm
           path: artifacts/*.rpm
@@ -181,10 +181,10 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -196,7 +196,7 @@ jobs:
           ls -la artifacts/
 
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: spock2-python-wheel
           path: artifacts/*.whl
@@ -217,7 +217,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           path: release-assets
           pattern: spock2-*
@@ -227,7 +227,7 @@ jobs:
         run: find release-assets -type f | sort
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.version.outputs.is_tag == 'true' && github.ref_name || format('v{0}', needs.version.outputs.version) }}
           name: SPOCK2 ${{ needs.version.outputs.version }}
