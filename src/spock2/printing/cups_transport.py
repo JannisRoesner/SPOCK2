@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from spock2.api.errors import CupsUnavailable, PrintFailed
+from spock2.printing.ppd_info import PpdGeometry, parse_ppd_geometry
+from spock2.printing.receipt_pdf import pdf_media_size_pt
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,44 @@ def cups_payload_format(data: bytes) -> tuple[str, str]:
     if data.startswith(b"%PDF"):
         return "application/pdf", ".pdf"
     return "text/plain", ".txt"
+
+
+# Ohne diese Optionen dreht bzw. skaliert pdftopdf den Bon auf das
+# Default-Medium der Queue: kurze Bons kommen um 90° gedreht quer aus der
+# Rolle, lange werden auf die Seitenlänge gestaucht oder abgeschnitten.
+_PDF_JOB_OPTIONS: dict[str, str] = {
+    "nopdfAutoRotate": "true",  # cups-filters: Auto-Rotate in pdftopdf aus
+    "orientation-requested": "3",  # IPP: portrait = nicht drehen
+    "print-scaling": "none",
+    "fit-to-page": "false",
+    "number-up": "1",
+}
+
+
+def cups_media_option(data: bytes) -> str | None:
+    """``Custom.<B>x<H>`` in Punkten passend zur PDF-Seite (Medium == Seite).
+
+    Punkte statt Millimeter, weil die MediaBox selbst in Punkten steht: so
+    entsteht kein Rundungsversatz, der den Filter doch noch skalieren lässt.
+    """
+    size = pdf_media_size_pt(data)
+    if size is None:
+        return None
+    width_pt, height_pt = size
+    return f"Custom.{round(width_pt)}x{round(height_pt)}"
+
+
+def cups_job_options(data: bytes) -> dict[str, str]:
+    """Job-Optionen für ``printFile``: Format plus Endlosrollen-Geometrie."""
+    mime, _ = cups_payload_format(data)
+    options = {"document-format": mime}
+    if mime != "application/pdf":
+        return options
+    options.update(_PDF_JOB_OPTIONS)
+    media = cups_media_option(data)
+    if media:
+        options["media"] = media
+    return options
 
 
 # IPP-Job-State → SPOCK2-Statusnamen (Transport-Ebene)
@@ -90,7 +130,7 @@ class CupsTransport:
             raise PrintFailed("Leerer Queue-Name")
         tmp_path: str | None = None
         try:
-            mime, suffix = cups_payload_format(data)
+            suffix = cups_payload_format(data)[1]
             fd, tmp_path = tempfile.mkstemp(prefix="spock2_", suffix=suffix)
             try:
                 os.write(fd, data)
@@ -99,12 +139,7 @@ class CupsTransport:
             # Sichere Permissions (nur Owner)
             with contextlib.suppress(OSError):
                 os.chmod(tmp_path, 0o600)
-            job_id = self._conn.printFile(
-                queue_name,
-                tmp_path,
-                title or "SPOCK2",
-                {"document-format": mime},
-            )
+            job_id = self._print_file(queue_name, tmp_path, title or "SPOCK2", data)
             return int(job_id) if job_id else None
         except Exception as exc:  # noqa: BLE001
             raise PrintFailed(
@@ -117,6 +152,28 @@ class CupsTransport:
                     Path(tmp_path).unlink(missing_ok=True)
                 except OSError as exc:
                     logger.warning("Tempfile cleanup fehlgeschlagen: %s", exc)
+
+    def _print_file(self, queue_name: str, tmp_path: str, title: str, data: bytes) -> Any:
+        """``printFile`` mit Rollen-Geometrie; Fallback ohne Geometrie-Optionen.
+
+        Queues ohne Custom-PageSize im PPD können die Optionen ablehnen – dann
+        ist ein gedrehter Bon immer noch besser als kein Bon.
+        """
+        options = cups_job_options(data)
+        try:
+            logger.debug("event=cups_print_file queue=%s options=%s", queue_name, options)
+            return self._conn.printFile(queue_name, tmp_path, title, options)
+        except Exception as exc:  # noqa: BLE001
+            minimal = {"document-format": options["document-format"]}
+            if options == minimal:
+                raise
+            logger.warning(
+                "event=cups_options_rejected queue=%s options=%s err=%s",
+                queue_name,
+                options,
+                exc,
+            )
+            return self._conn.printFile(queue_name, tmp_path, title, minimal)
 
     def get_job_state(self, job_id: int) -> str:
         try:
@@ -147,6 +204,23 @@ class CupsTransport:
             return _IPP_STATE_MAP.get(int(state), "unknown")
         except (TypeError, ValueError):
             return "unknown"
+
+    def get_ppd_geometry(self, queue_name: str) -> PpdGeometry | None:
+        """PPD-Grenzen der Queue; None bei Raw-Queues (keine PPD)."""
+        tmp_path: str | None = None
+        try:
+            tmp_path = self._conn.getPPD(queue_name)
+            if not tmp_path:
+                return None
+            text = Path(tmp_path).read_text(encoding="utf-8", errors="replace")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("PPD für '%s' nicht lesbar: %s", queue_name, exc)
+            return None
+        finally:
+            if tmp_path:
+                with contextlib.suppress(OSError):
+                    Path(tmp_path).unlink(missing_ok=True)
+        return parse_ppd_geometry(text)
 
     def list_queues(self) -> list[str]:
         try:

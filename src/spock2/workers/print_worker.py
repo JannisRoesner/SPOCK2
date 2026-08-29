@@ -132,7 +132,7 @@ class PrintWorker(QObject):
                 if use_pdf:
                     data = render_receipt_pdf(
                         text,
-                        paper_width_mm=profile.paper_width_mm,
+                        page_width_pt=profile.printable_width_pt,
                         line_width=profile.line_width_chars,
                     )
                 elif self._prefer_escpos(profile):

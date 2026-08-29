@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import pytest
+
 from spock2.domain.notes import Note
 from spock2.domain.orders import Order, OrderItem
 from spock2.domain.print_job import PrinterRole
-from spock2.printing.cups_transport import cups_payload_format
+from spock2.printing.cups_transport import (
+    cups_job_options,
+    cups_media_option,
+    cups_payload_format,
+)
 from spock2.printing.gdi_layout import (
     GDI_LINE_WIDTH,
     GdiLineKind,
@@ -13,8 +19,18 @@ from spock2.printing.gdi_layout import (
     gdi_layout_profile,
 )
 from spock2.printing.profiles.tsp100 import TSP100
-from spock2.printing.receipt_pdf import RuleOp, TextOp, layout_receipt, render_receipt_pdf
+from spock2.printing.receipt_pdf import (
+    ReceiptLayout,
+    RuleOp,
+    TextOp,
+    layout_receipt,
+    pdf_media_size_pt,
+    render_receipt_pdf,
+)
 from spock2.printing.renderer import ReceiptRenderer
+
+# Bedruckbare Breite der 80-mm-Rolle: 576 Punkte @ 203 dpi = 204 pt = 72 mm.
+PAGE_W_PT = TSP100.printable_width_pt
 
 
 def test_cups_payload_format_pdf_vs_text() -> None:
@@ -41,7 +57,7 @@ def test_pdf_order_has_large_table_and_rules() -> None:
     text = ReceiptRenderer().format_order(
         order, gdi_layout_profile(TSP100), role=PrinterRole.KITCHEN
     )
-    layout = layout_receipt(text, paper_width_mm=80, line_width=GDI_LINE_WIDTH)
+    layout = layout_receipt(text, page_width_pt=PAGE_W_PT, line_width=GDI_LINE_WIDTH)
     headers = [op for op in layout.ops if isinstance(op, TextOp) and op.text == "KÜCHEN-BON"]
     assert headers
     assert headers[0].size == layout.header_pt
@@ -66,7 +82,7 @@ def test_pdf_note_large_zettel_title() -> None:
         timestamp="2026-07-23T15:00:00+02:00",
     )
     text = ReceiptRenderer().format_note(note, gdi_layout_profile(TSP100))
-    layout = layout_receipt(text, paper_width_mm=80)
+    layout = layout_receipt(text, page_width_pt=PAGE_W_PT)
     titles = [op for op in layout.ops if isinstance(op, TextOp) and op.text == "ZETTEL"]
     assert titles and titles[0].size == layout.header_pt
     prio = [op for op in layout.ops if isinstance(op, TextOp) and "(HOCH)" in op.text]
@@ -82,8 +98,103 @@ def test_render_receipt_pdf_bytes_and_umlauts() -> None:
     text = ReceiptRenderer().format_order(
         order, gdi_layout_profile(TSP100), role=PrinterRole.KITCHEN
     )
-    pdf = render_receipt_pdf(text, paper_width_mm=80)
+    pdf = render_receipt_pdf(text, page_width_pt=PAGE_W_PT)
     assert pdf.startswith(b"%PDF")
     assert b"/Courier" in pdf
     assert "Käsespätzle".encode("cp1252") in pdf
     assert b"%%EOF" in pdf
+    # Textmodus 2 (füllen + konturieren) gegen zu dünne Glyphen
+    assert b"2 Tr" in pdf
+    assert b"/Rotate 0" in pdf
+
+
+def _order_with_items(count: int, *, category: str = "Speisen") -> Order:
+    return Order(
+        id=15,
+        table_number=1,
+        waiter="Test",
+        items=[
+            OrderItem(qty=1, name=f"Position {i}", notes="Ketchup", category=category)
+            for i in range(count)
+        ],
+    )
+
+
+def _layout_for(count: int) -> ReceiptLayout:
+    text = ReceiptRenderer().format_order(
+        _order_with_items(count), gdi_layout_profile(TSP100), role=PrinterRole.KITCHEN
+    )
+    return layout_receipt(text, page_width_pt=PAGE_W_PT, line_width=GDI_LINE_WIDTH)
+
+
+def test_page_width_is_printable_width_not_roll_width() -> None:
+    """Die Star-PPD erlaubt max. 204 pt Breite – 80 mm (227 pt) lehnt sie ab."""
+    assert PAGE_W_PT == 204
+    assert _layout_for(3).page_w == 204.0
+
+
+@pytest.mark.parametrize("count", [0, 1, 2, 5, 20, 60])
+def test_pdf_page_is_always_portrait(count: int) -> None:
+    """Querformatige Seiten werden von pdftopdf um 90° gedreht."""
+    layout = _layout_for(count)
+    assert layout.page_h > layout.page_w
+
+
+@pytest.mark.parametrize("count", [0, 1, 2, 5, 20, 60])
+def test_pdf_page_dimensions_are_whole_points(count: int) -> None:
+    """Nur ganze Punkte lassen sich verlustfrei als ``Custom.BxH`` anfordern."""
+    layout = _layout_for(count)
+    assert layout.page_w == int(layout.page_w)
+    assert layout.page_h == int(layout.page_h)
+
+
+def test_pdf_page_grows_with_content() -> None:
+    short = _layout_for(2)
+    long = _layout_for(40)
+    assert long.page_h > short.page_h
+
+
+def test_pdf_font_size_independent_of_content_length() -> None:
+    """Gleiche Schriftgröße auf Küchen- und Theken-Bon, egal wie lang."""
+    assert _layout_for(2).base_pt == _layout_for(40).base_pt == 10.0
+
+
+def test_pdf_content_stays_inside_page() -> None:
+    layout = _layout_for(8)
+    for op in layout.ops:
+        if isinstance(op, TextOp):
+            right = op.x + len(op.text) * op.size * 0.6
+            assert op.x >= 0
+            assert right <= layout.page_w
+
+
+def test_pdf_media_option_matches_page_exactly() -> None:
+    text = ReceiptRenderer().format_order(
+        _order_with_items(6), gdi_layout_profile(TSP100), role=PrinterRole.KITCHEN
+    )
+    layout = layout_receipt(text, page_width_pt=PAGE_W_PT, line_width=GDI_LINE_WIDTH)
+    pdf = render_receipt_pdf(text, page_width_pt=PAGE_W_PT, line_width=GDI_LINE_WIDTH)
+
+    assert pdf_media_size_pt(pdf) == (layout.page_w, layout.page_h)
+    assert cups_media_option(pdf) == f"Custom.204x{int(layout.page_h)}"
+
+
+def test_cups_job_options_pin_geometry_for_pdf() -> None:
+    pdf = render_receipt_pdf(
+        ReceiptRenderer().format_order(
+            _order_with_items(3), gdi_layout_profile(TSP100), role=PrinterRole.KITCHEN
+        ),
+        page_width_pt=PAGE_W_PT,
+    )
+    options = cups_job_options(pdf)
+    assert options["document-format"] == "application/pdf"
+    assert options["nopdfAutoRotate"] == "true"
+    assert options["orientation-requested"] == "3"
+    assert options["print-scaling"] == "none"
+    assert options["fit-to-page"] == "false"
+    assert options["media"].startswith("Custom.204x")
+
+
+def test_cups_job_options_plain_text_only_format() -> None:
+    assert cups_job_options(b"KUECHEN-BON\n") == {"document-format": "text/plain"}
+    assert cups_media_option(b"KUECHEN-BON\n") is None

@@ -16,6 +16,7 @@ class PrinterProfileProto(Protocol):
     supports_cutter: bool
     encoding: str
     line_width_chars: int
+    dpi: int
 
     def wrap_text(self, text: str) -> list[str]: ...
 
@@ -34,6 +35,18 @@ class PrinterProfile:
     line_width_chars: int = 42
     qr_as_bitmap: bool = False
     capabilities: tuple[str, ...] = field(default_factory=tuple)
+    dpi: int = 203  # TSP100 und POS5890K drucken beide mit 203 dpi
+
+    @property
+    def printable_width_pt(self) -> int:
+        """Bedruckbare Breite in PDF-Punkten (abgerundet).
+
+        Nicht die Rollenbreite: 80-mm-Papier hat 576 Punkte = 72 mm Druckbreite.
+        Genau diesen Wert erlaubt die Star-PPD als Maximum für Custom-Formate
+        (``ParamCustomPageSize Width: 1 points 72 204``), breitere Seiten lehnt
+        CUPS ab.
+        """
+        return int(self.dots_per_line * 72 / max(1, self.dpi))
 
     def wrap_text(self, text: str) -> list[str]:
         """Bricht Text auf ``line_width_chars`` um (Wortgrenzen bevorzugt)."""

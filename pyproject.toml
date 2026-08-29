@@ -48,6 +48,7 @@ dev = [
 [project.scripts]
 spock2 = "spock2.__main__:main"
 spock2-probe-usb = "spock2.diagnostics.probe_usb:main"
+spock2-probe-queue = "spock2.diagnostics.probe_queue:main"
 spock2-test-print = "spock2.diagnostics.test_print:main"
 
 [project.urls]

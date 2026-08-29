@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from math import ceil
 
 from spock2.printing.gdi_layout import (
     GDI_BASE_PT,
@@ -16,8 +18,31 @@ from spock2.printing.gdi_layout import (
 
 # Courier (Standard-14): feste Zeichenbreite 600/1000 em
 _COURIER_EM = 0.6
-_MARGIN_PT = 8.0
 _MM_TO_PT = 72.0 / 25.4
+
+# Star-PPD: ``HWMargins: 0 0 0 0`` – die 204 pt sind voll bedruckbar. Der Rand
+# ist reine Optik. 32 Zeichen à 10 pt brauchen exakt 192 pt, passt also.
+_MARGIN_PT = 6.0
+
+# Vorschub nach der letzten Zeile, damit der Abriss nicht in den Text läuft.
+_FEED_PT = 8.0 * _MM_TO_PT
+
+# pdftopdf dreht querformatige Seiten auf das Medium. Die Seite muss daher
+# hochkant bleiben, auch wenn der Inhalt kürzer als die Breite ist – sonst
+# kommt der Bon um 90° gedreht quer aus der Rolle. Kleinster sicherer Wert,
+# damit die Rollenlänge weiter dem Inhalt folgt.
+_MIN_PAGE_ASPECT = 1.05
+
+# Courier ist auf Thermopapier sehr dünn: Glyphen zusätzlich konturieren
+# (Textmodus 2 = füllen + stricheln) statt nur füllen.
+_TEXT_STROKE_RATIO = 0.035
+_TEXT_STROKE_MIN_PT = 0.20
+_TEXT_STROKE_MAX_PT = 0.55
+_RULE_WIDTH_PT = 1.0
+
+_MEDIABOX_RE = re.compile(
+    rb"/MediaBox\s*\[\s*([\d.+-]+)\s+([\d.+-]+)\s+([\d.+-]+)\s+([\d.+-]+)\s*\]"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,11 +73,16 @@ class ReceiptLayout:
 def layout_receipt(
     text: str,
     *,
-    paper_width_mm: int,
+    page_width_pt: int,
     line_width: int = GDI_LINE_WIDTH,
 ) -> ReceiptLayout:
-    """Pixel-/Punkt-Layout analog zum Windows-GDI-Bon."""
-    page_w = max(80.0, float(paper_width_mm) * _MM_TO_PT)
+    """Punkt-Layout analog zum Windows-GDI-Bon.
+
+    ``page_width_pt`` ist die **bedruckbare** Breite (``profile.printable_width_pt``),
+    nicht die Rollenbreite. Seitenmaße bleiben ganzzahlig, damit die
+    CUPS-Media-Option exakt der MediaBox entspricht.
+    """
+    page_w = float(max(72, int(page_width_pt)))
     usable = max(1.0, page_w - 2 * _MARGIN_PT)
     base_pt = min(float(GDI_BASE_PT), usable / (max(1, line_width) * _COURIER_EM))
     header_pt = base_pt * GDI_HEADER_SCALE
@@ -123,7 +153,7 @@ def layout_receipt(
         ops.append(TextOp(x=_MARGIN_PT, y_top=y, size=base_pt, bold=False, text=line.rstrip()))
         y += base_lead
 
-    page_h = max(page_w * 0.6, y + _MARGIN_PT)
+    page_h = float(ceil(max(page_w * _MIN_PAGE_ASPECT, y + _MARGIN_PT + _FEED_PT)))
     return ReceiptLayout(
         page_w=page_w,
         page_h=page_h,
@@ -137,15 +167,29 @@ def layout_receipt(
 def render_receipt_pdf(
     text: str,
     *,
-    paper_width_mm: int,
+    page_width_pt: int,
     line_width: int = GDI_LINE_WIDTH,
 ) -> bytes:
     """Erzeugt ein einseitiges PDF (Courier) für CUPS/Star-Raster."""
-    layout = layout_receipt(
-        text, paper_width_mm=paper_width_mm, line_width=line_width
-    )
+    layout = layout_receipt(text, page_width_pt=page_width_pt, line_width=line_width)
     stream = _content_stream(layout)
     return _assemble_pdf(layout.page_w, layout.page_h, stream)
+
+
+def pdf_media_size_pt(data: bytes) -> tuple[float, float] | None:
+    """Seitengröße (Breite, Höhe) in Punkten aus der ersten ``/MediaBox``."""
+    match = _MEDIABOX_RE.search(data)
+    if match is None:
+        return None
+    try:
+        x0, y0, x1, y1 = (float(match.group(i)) for i in (1, 2, 3, 4))
+    except ValueError:
+        return None
+    width = abs(x1 - x0)
+    height = abs(y1 - y0)
+    if width <= 0 or height <= 0:
+        return None
+    return width, height
 
 
 def _layout_table_meta(
@@ -188,13 +232,18 @@ def _text_width(text: str, size: float) -> float:
     return len(text) * size * _COURIER_EM
 
 
+def _text_stroke_width(size: float) -> float:
+    """Konturbreite, die Courier auf Thermopapier lesbar fett macht."""
+    return min(_TEXT_STROKE_MAX_PT, max(_TEXT_STROKE_MIN_PT, size * _TEXT_STROKE_RATIO))
+
+
 def _content_stream(layout: ReceiptLayout) -> bytes:
     buf = bytearray()
-    buf += b"0.9 w\n"
     right = layout.page_w - _MARGIN_PT
     for op in layout.ops:
         if isinstance(op, RuleOp):
             y1 = layout.page_h - op.y
+            buf += f"{_RULE_WIDTH_PT:.2f} w\n".encode("ascii")
             buf += f"{_MARGIN_PT:.2f} {y1:.2f} m {right:.2f} {y1:.2f} l S\n".encode("ascii")
             if op.double:
                 y2 = y1 - 2.4
@@ -204,7 +253,8 @@ def _content_stream(layout: ReceiptLayout) -> bytes:
         font = b"/F2" if op.bold else b"/F1"
         buf += b"BT "
         buf += font
-        buf += f" {op.size:.2f} Tf 1 0 0 1 {op.x:.2f} {pdf_y:.2f} Tm ".encode("ascii")
+        buf += f" {op.size:.2f} Tf 2 Tr {_text_stroke_width(op.size):.2f} w ".encode("ascii")
+        buf += f"1 0 0 1 {op.x:.2f} {pdf_y:.2f} Tm ".encode("ascii")
         buf += _pdf_literal(op.text)
         buf += b" Tj ET\n"
     return bytes(buf)
@@ -221,7 +271,8 @@ def _assemble_pdf(page_w: float, page_h: float, stream: bytes) -> bytes:
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         (
-            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_w:.2f} {page_h:.2f}] "
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_w:.0f} {page_h:.0f}] "
+            f"/CropBox [0 0 {page_w:.0f} {page_h:.0f}] /Rotate 0 "
             f"/Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>"
         ).encode("ascii"),
         b"<< /Length "
