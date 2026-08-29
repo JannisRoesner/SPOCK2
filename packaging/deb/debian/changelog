@@ -1,3 +1,13 @@
+spock2 (0.1.5-1) UNRELEASED; urgency=medium
+
+  * Linux/CUPS: receipt page is as long as the receipt, so the roll grows with
+    the content instead of being rotated or scaled to a fixed page size.
+  * Page width is the printable 72 mm (204 pt), matching the Star PPD limit.
+  * Receipt font is outlined for better readability on thermal paper.
+  * New spock2-probe-queue reports the PPD page-size limits of a CUPS queue.
+
+ -- SPOCK2 Contributors <spock2@localhost>  Sun, 30 Aug 2026 00:45:00 +0200
+
 spock2 (0.1.4-1) UNRELEASED; urgency=medium
 
   * TSP100 receipts: restore Alt-SPOCK layout with large table numbers.

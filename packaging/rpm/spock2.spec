@@ -7,7 +7,7 @@
 # Version mit pyproject.toml abstimmen.
 
 Name:           spock2
-Version:        0.1.4
+Version:        0.1.5
 Release:        1%{?dist}
 Summary:        SPOCK2 kitchen kiosk client (RIKER/PICARD + CUPS)
 License:        AGPL-3.0-or-later
@@ -81,6 +81,8 @@ install -D -m 0644 src/spock2/ui/resources/spock2_icon_256.png \
 %{_datadir}/icons/hicolor/256x256/apps/spock2.png
 
 %changelog
+* Sun Aug 30 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.5-1
+- CUPS receipts: page length follows the content, no more rotated or scaled bons
 * Sun Aug 30 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.4-1
 - Restore Alt-SPOCK TSP100 layout: GDI on Windows, PDF on CUPS
 * Sat Aug 29 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.3-1
