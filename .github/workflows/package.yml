@@ -107,18 +107,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential debhelper dh-python python3-all \
-            python3-setuptools python3-pip python3-venv python3-wheel \
+            python3-setuptools python3-pip python3-wheel python3-build \
             dpkg-dev fakeroot
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
+          python3 --version
 
       - name: Build .deb
         env:
-          # debian/rules nutzt pip; Ubuntu 26.04 ist „externally managed“
+          # debian/rules nutzt pip zum Wheel-Build; System-Python ist PEP-668.
+          # Runtime-Deps (PySide6, httpx, …) stehen in debian/control und
+          # müssen hier nicht installiert werden — apt zieht sie auf dem Zielgerät.
           PIP_BREAK_SYSTEM_PACKAGES: "1"
         run: |
           ln -sfn packaging/deb/debian debian
@@ -126,6 +123,7 @@ jobs:
           mkdir -p artifacts
           mv ../spock2_*.deb artifacts/
           ls -la artifacts/
+          dpkg-deb -f artifacts/spock2_*.deb Package Version Architecture Depends
 
       - name: Upload Debian artifact
         uses: actions/upload-artifact@v4
