@@ -28,7 +28,6 @@ dependencies = [
     "PySide6>=6.6",
     "httpx>=0.27",
     "pydantic>=2.6",
-    "pydantic-settings>=2.2",
     "tomli-w>=1.0",
 ]
 

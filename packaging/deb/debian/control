@@ -15,19 +15,22 @@ Rules-Requires-Root: no
 
 Package: spock2
 Architecture: any
+# Runtime: nur Ubuntu-26.04-Systempakete (kein pip/venv). PySide6 ist in
+# Resolute in Module aufgeteilt; ein Metapaket python3-pyside6 gibt es nicht.
+# python3-pyside6.*, python3-httpx, python3-pydantic, python3-tomli-w: universe
 Depends:
  ${misc:Depends},
  ${python3:Depends},
  python3 (>= 3.12),
+ python3-pyside6.qtcore,
+ python3-pyside6.qtgui,
+ python3-pyside6.qtwidgets,
+ python3-httpx,
+ python3-pydantic,
+ python3-tomli-w,
+ python3-cups,
  cups,
- cups-client,
- libxcb1,
- libxkbcommon0,
- libgl1,
- libegl1,
- libdbus-1-3,
- libfontconfig1,
- libfreetype6
+ cups-client
 Recommends:
  printer-driver-cups-pdf,
  cups-bsd,

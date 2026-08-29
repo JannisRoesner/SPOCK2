@@ -1,6 +1,9 @@
 # SPOCK2 als `.deb` bauen
 
-Ziel: Ubuntu **24.04** (Build-Host oder Vagrant-VM).
+Ziel: Ubuntu **26.04 LTS** (resolute). Laufzeit nutzt ausschließlich
+**System-Python + apt-Pakete** (kein venv, kein `pip install` auf dem Gerät).
+
+`universe` muss aktiv sein (Ubuntu-Desktop-Standard), sonst fehlen PySide6/httpx/pydantic.
 
 ## Voraussetzungen (Build-Host oder VM)
 
@@ -8,17 +11,20 @@ Ziel: Ubuntu **24.04** (Build-Host oder Vagrant-VM).
 sudo apt update
 sudo apt install -y \
   build-essential debhelper dh-python python3-all python3-setuptools \
-  python3-pip python3-venv python3-wheel \
+  python3-pip python3-wheel \
   dpkg-dev fakeroot
 ```
 
-Python 3.12+ und Netzwerk für Pip-Deps (PySide6 u. a.) beim Wheel-Build.
+Netzwerk nur für den Wheel-Build von SPOCK2 selbst (`python3 -m build`).
+PySide6 und die übrigen Laufzeit-Libs kommen **nicht** ins `.deb`, sondern
+als `Depends` von Ubuntu 26.04.
 
 ## Schnellweg: Wheel + `fpm` / manuelles Layout (Dev)
 
 Aus dem **Repo-Root**:
 
 ```bash
+# Nur für lokale Dev-Tests, nicht für das Zielgerät:
 python3 -m venv .venv-build
 source .venv-build/bin/activate
 pip install -U pip build wheel
@@ -82,7 +88,9 @@ systemctl --user enable --now spock2.service
 ## Hinweise
 
 - Live-Config unter `/etc/spock2/spock2.toml` wird vom Paket **nicht** überschrieben (nur `.example`).
-- `pycups` / native CUPS-Libs: ggf. `python3-cups` aus Ubuntu nutzen oder Pip-Extra `[cups]` im Build berücksichtigen.
+- Nach `apt install ./spock2_*.deb` kommen PySide6, httpx, pydantic, tomli-w und
+  pycups automatisch über apt (`python3-pyside6.qt*`, `python3-httpx`, …).
+  Keine zweite Python-Installation und kein `pip` auf dem Kiosk.
 - Version in `pyproject.toml` und `debian/changelog` synchron halten.
 
 Siehe auch: `deploy/cups/README.md`.

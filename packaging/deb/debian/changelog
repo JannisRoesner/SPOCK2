@@ -1,6 +1,8 @@
 spock2 (0.1.0-1) UNRELEASED; urgency=medium
 
-  * Initial packaging for Ubuntu 24.04.
+  * Packaging for Ubuntu 26.04 LTS (resolute): runtime Python deps from apt.
+  * Depends: python3-pyside6.qt{core,gui,widgets}, python3-httpx,
+    python3-pydantic, python3-tomli-w, python3-cups (no pip/venv).
   * Ships spock2 binary, example config, udev rules, systemd units, kiosk helpers.
 
- -- SPOCK2 Contributors <spock2@localhost>  Thu, 23 Jul 2026 14:00:00 +0200
+ -- SPOCK2 Contributors <spock2@localhost>  Sat, 29 Aug 2026 14:00:00 +0200

@@ -64,6 +64,10 @@ override_dh_auto_install:
 override_dh_auto_test:
 	@echo "Skipping dh_auto_test (run pytest in CI)"
 
+# Keine PyPI-Namen raten (PySide6 ≠ python3-pyside6.*). Depends stehen in control.
+override_dh_python3:
+	dh_python3 --no-guessing-deps
+
 override_dh_install:
 	# Dateien bereits in override_dh_auto_install; .install als Doku behalten
 	@true
