@@ -62,8 +62,8 @@ spock2-test-print --file --role kitchen   # nur Datei-Ausgabe
 
 | OS | Transport (`print.transport`) | Payload |
 |----|-------------------------------|---------|
-| Linux | `auto` → CUPS, oder `cups` | UTF-8-Text |
-| Windows | `auto` → WinSpool, oder `winspool` | ESC/POS RAW |
+| Linux | `auto` → CUPS, oder `cups` | PDF im Alt-SPOCK-Look (große Tischnummer, keine umgebrochenen `===`) |
+| Windows | `auto` → WinSpool, oder `winspool` | TSP100: GDI (Star-Treiber, große Tischnummer); 58 mm: ESC/POS RAW |
 | Dev | `file` | Dateien unter State-Dir / `SPOCK2_PRINT_OUT` |
 
 In `[printers.*]` ist `queue` der CUPS-Queue-Name bzw. der exakte Windows-Druckername

@@ -17,7 +17,10 @@ from spock2.domain.orders import Order
 from spock2.domain.print_job import PrinterRole, PrintJob, PrintJobStatus, SourceType
 from spock2.persistence import print_jobs
 from spock2.persistence.db import connection
+from spock2.printing.gdi_layout import gdi_layout_profile, profile_uses_gdi
+from spock2.printing.gdi_print import gdi_available
 from spock2.printing.profiles import get_profile
+from spock2.printing.receipt_pdf import render_receipt_pdf
 from spock2.printing.renderer import ReceiptRenderer
 from spock2.printing.transport import PrintTransport
 
@@ -108,18 +111,35 @@ class PrintWorker(QObject):
     def _process_job(self, job: PrintJob) -> None:
         assert job.id is not None
         profile = get_profile(job.profile_name)
+        use_gdi = self._prefer_gdi(profile)
+        use_pdf = self._prefer_cups_pdf(profile)
+        if use_gdi or use_pdf or profile_uses_gdi(profile):
+            profile = gdi_layout_profile(profile)
         payload = json.loads(job.payload_json)
         text = self._render_payload(job, payload, profile)
-        if self._prefer_escpos(profile):
-            data = self.renderer.render_escpos(text, profile)
-        else:
-            data = self.renderer.render_to_bytes(text, profile)
 
         queue = self._queue_for_role(job.target_role)
         title = f"SPOCK2 {job.source_type.value} {job.source_id}"
 
         try:
-            cups_id = self.transport.submit(queue, data, title)
+            if use_gdi:
+                from spock2.printing.winspool_transport import WinSpoolTransport
+
+                if not isinstance(self.transport, WinSpoolTransport):
+                    raise PrintFailed("GDI nur mit WinSpoolTransport")
+                cups_id = self.transport.submit_gdi(queue, text, title)
+            else:
+                if use_pdf:
+                    data = render_receipt_pdf(
+                        text,
+                        paper_width_mm=profile.paper_width_mm,
+                        line_width=profile.line_width_chars,
+                    )
+                elif self._prefer_escpos(profile):
+                    data = self.renderer.render_escpos(text, profile)
+                else:
+                    data = self.renderer.render_to_bytes(text, profile)
+                cups_id = self.transport.submit(queue, data, title)
         except (PrintFailed, CupsUnavailable) as exc:
             reason = exc.message or str(exc)
             if exc.__cause__ is not None:
@@ -132,12 +152,14 @@ class PrintWorker(QObject):
             return
 
         logger.info(
-            "event=print_submitted job=%s role=%s queue=%s transport_job=%s bytes=%s",
+            "event=print_submitted job=%s role=%s queue=%s transport_job=%s chars=%s gdi=%s pdf=%s",
             job.id,
             job.target_role.value,
             queue,
             cups_id,
-            len(data),
+            len(text),
+            use_gdi,
+            use_pdf,
         )
 
         try:
@@ -209,11 +231,31 @@ class PrintWorker(QObject):
             return printer.queue
         return f"spock-{role.value}"
 
+    def _prefer_gdi(self, profile: Any) -> bool:
+        """TSP100 unter Windows: GDI über den Star-Treiber (Alt-SPOCK-Look)."""
+        from spock2.printing.winspool_transport import WinSpoolTransport
+
+        if not isinstance(self.transport, WinSpoolTransport):
+            return False
+        if not gdi_available():
+            return False
+        return profile_uses_gdi(profile)
+
+    def _prefer_cups_pdf(self, profile: Any) -> bool:
+        """TSP100 unter CUPS: PDF mit GDI-Look statt Klartext."""
+        from spock2.printing.cups_transport import CupsTransport
+
+        if not isinstance(self.transport, CupsTransport):
+            return False
+        return profile_uses_gdi(profile)
+
     def _prefer_escpos(self, profile: Any) -> bool:
-        """ESC/POS für WinSpool; sonst wenn Profil escpos und nicht CUPS-Text."""
+        """ESC/POS für WinSpool (58 mm) bzw. Profile mit escpos-Capability."""
         from spock2.printing.cups_transport import CupsTransport
         from spock2.printing.winspool_transport import WinSpoolTransport
 
+        if self._prefer_gdi(profile):
+            return False
         if isinstance(self.transport, WinSpoolTransport):
             return True
         if isinstance(self.transport, CupsTransport):

@@ -45,7 +45,8 @@ class FileTransport:
             job_id = self._next_id
             self._next_id += 1
             self._jobs[job_id] = "completed"
-        filename = f"{ts}_{safe_queue}_{job_id}_{safe_title or 'job'}.txt"
+        ext = ".pdf" if data.startswith(b"%PDF") else ".txt"
+        filename = f"{ts}_{safe_queue}_{job_id}_{safe_title or 'job'}{ext}"
         path = self.output_dir / filename
         path.write_bytes(data)
         meta = path.with_suffix(".meta")

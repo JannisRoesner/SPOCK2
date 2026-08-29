@@ -130,16 +130,41 @@ def test_winspool_unavailable_on_non_windows(monkeypatch: pytest.MonkeyPatch) ->
         WinSpoolTransport()
 
 
-def test_prefer_escpos_winspool() -> None:
-    transport = MagicMock(spec=WinSpoolTransport)
+def test_prefer_escpos_winspool_small_printer() -> None:
     worker = PrintWorker(
         db_path=":memory:",
         config=AppConfig(),
-        transport=transport,
+        transport=MagicMock(spec=WinSpoolTransport),
     )
-    # isinstance check needs real class
     worker.transport = object.__new__(WinSpoolTransport)
-    profile = SimpleNamespace(capabilities=("cutter",), name="tsp100")
+    profile = SimpleNamespace(capabilities=("escpos",), name="pos5890k")
+    assert worker._prefer_gdi(profile) is False
+    assert worker._prefer_escpos(profile) is True
+
+
+def test_prefer_gdi_tsp100_winspool(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("spock2.workers.print_worker.gdi_available", lambda: True)
+    worker = PrintWorker(
+        db_path=":memory:",
+        config=AppConfig(),
+        transport=MagicMock(spec=WinSpoolTransport),
+    )
+    worker.transport = object.__new__(WinSpoolTransport)
+    profile = SimpleNamespace(capabilities=("cutter", "gdi"), name="tsp100")
+    assert worker._prefer_gdi(profile) is True
+    assert worker._prefer_escpos(profile) is False
+
+
+def test_prefer_escpos_tsp100_without_gdi(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("spock2.workers.print_worker.gdi_available", lambda: False)
+    worker = PrintWorker(
+        db_path=":memory:",
+        config=AppConfig(),
+        transport=MagicMock(spec=WinSpoolTransport),
+    )
+    worker.transport = object.__new__(WinSpoolTransport)
+    profile = SimpleNamespace(capabilities=("cutter", "gdi"), name="tsp100")
+    assert worker._prefer_gdi(profile) is False
     assert worker._prefer_escpos(profile) is True
 
 
@@ -153,6 +178,23 @@ def test_prefer_escpos_file_with_capability() -> None:
     assert worker._prefer_escpos(profile) is True
     profile_no = SimpleNamespace(capabilities=("cutter",), name="tsp100")
     assert worker._prefer_escpos(profile_no) is False
+
+
+def test_prefer_cups_pdf() -> None:
+    from spock2.printing.cups_transport import CupsTransport
+
+    cups = object.__new__(CupsTransport)
+    worker = PrintWorker(
+        db_path=":memory:",
+        config=AppConfig(),
+        transport=cups,
+    )
+    tsp = SimpleNamespace(capabilities=("gdi",), name="tsp100")
+    small = SimpleNamespace(capabilities=("escpos",), name="pos5890k")
+    assert worker._prefer_cups_pdf(tsp) is True
+    assert worker._prefer_cups_pdf(small) is False
+    worker.transport = FileTransport()
+    assert worker._prefer_cups_pdf(tsp) is False
 
 
 def test_prefer_escpos_cups_never() -> None:
@@ -176,3 +218,27 @@ def test_winspool_submit_empty_queue(monkeypatch: pytest.MonkeyPatch) -> None:
     transport = WinSpoolTransport()
     with pytest.raises(PrintFailed):
         transport.submit("", b"x", "t")
+
+
+def test_winspool_submit_gdi_mocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "platform", "win32")
+    fake_wp = MagicMock()
+    monkeypatch.setattr("spock2.printing.winspool_transport._win32print", fake_wp)
+    monkeypatch.setattr("spock2.printing.winspool_transport._WIN32_IMPORT_ERROR", None)
+
+    called: dict[str, object] = {}
+
+    def fake_gdi(printer: str, text: str, job_name: str, **kwargs: object) -> None:
+        called["printer"] = printer
+        called["text"] = text
+        called["job_name"] = job_name
+
+    monkeypatch.setattr("spock2.printing.gdi_print.gdi_print_text", fake_gdi)
+    fake_wp.OpenPrinter.return_value = "HANDLE"
+    fake_wp.EnumJobs.return_value = []
+    transport = WinSpoolTransport()
+    job_id = transport.submit_gdi("Star Kitchen", "KÜCHEN-BON\nTisch: 4", "Order-9")
+    assert job_id == 1_000_000
+    assert called["printer"] == "Star Kitchen"
+    assert "KÜCHEN-BON" in str(called["text"])
+    assert transport.get_job_state(job_id) == "completed"

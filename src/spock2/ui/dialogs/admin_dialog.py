@@ -51,7 +51,7 @@ _ROLE_LABELS: dict[PrinterRoleName, str] = {
 _TRANSPORT_LABELS: dict[PrintTransportMode, str] = {
     "auto": "Auto (Linux→CUPS, Windows→WinSpool, sonst Datei)",
     "cups": "CUPS",
-    "winspool": "Windows-Spooler (RAW)",
+    "winspool": "Windows-Spooler (GDI / RAW)",
     "file": "Virtuell / Datei (Test)",
 }
 

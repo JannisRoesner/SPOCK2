@@ -23,6 +23,13 @@ except Exception as exc:  # noqa: BLE001 – Import kann fehlen / fehlschlagen
     _CUPS_IMPORT_ERROR = exc
 
 
+def cups_payload_format(data: bytes) -> tuple[str, str]:
+    """MIME-Typ und Dateiendung für CUPS ``printFile``."""
+    if data.startswith(b"%PDF"):
+        return "application/pdf", ".pdf"
+    return "text/plain", ".txt"
+
+
 # IPP-Job-State → SPOCK2-Statusnamen (Transport-Ebene)
 _IPP_STATE_MAP: dict[int, str] = {
     3: "pending",  # IPP_JOB_PENDING
@@ -83,7 +90,8 @@ class CupsTransport:
             raise PrintFailed("Leerer Queue-Name")
         tmp_path: str | None = None
         try:
-            fd, tmp_path = tempfile.mkstemp(prefix="spock2_", suffix=".txt")
+            mime, suffix = cups_payload_format(data)
+            fd, tmp_path = tempfile.mkstemp(prefix="spock2_", suffix=suffix)
             try:
                 os.write(fd, data)
             finally:
@@ -95,7 +103,7 @@ class CupsTransport:
                 queue_name,
                 tmp_path,
                 title or "SPOCK2",
-                {"document-format": "text/plain"},
+                {"document-format": mime},
             )
             return int(job_id) if job_id else None
         except Exception as exc:  # noqa: BLE001

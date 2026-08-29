@@ -1,4 +1,4 @@
-"""Windows-Spooler-Transport (RAW / ESC/POS) via pywin32."""
+"""Windows-Spooler-Transport: GDI (TSP100) und RAW/ESC/POS (58 mm)."""
 
 from __future__ import annotations
 
@@ -62,7 +62,7 @@ def _map_job_status(status_flags: int) -> str:
 
 
 class WinSpoolTransport:
-    """pywin32 RAW-Submit an Windows-Druckernamen."""
+    """Windows-Spooler: GDI für TSP100, RAW/ESC/POS für 58-mm-Geräte."""
 
     def __init__(self) -> None:
         if sys.platform != "win32":
@@ -74,6 +74,19 @@ class WinSpoolTransport:
             )
         self._wp = _win32print
         self._job_printers: dict[int, str] = {}
+        self._gdi_seq = 1_000_000
+
+    def submit_gdi(self, queue_name: str, text: str, title: str) -> int | None:
+        """GDI-Textjob (Star-TSP100-Treiber, große Tischnummer)."""
+        if not queue_name:
+            raise PrintFailed("Leerer Druckername")
+        from spock2.printing.gdi_print import gdi_print_text
+
+        gdi_print_text(queue_name, text, title or "SPOCK2")
+        job_id = self._gdi_seq
+        self._gdi_seq += 1
+        self._job_printers[job_id] = queue_name
+        return job_id
 
     def submit(self, queue_name: str, data: bytes, title: str) -> int | None:
         if not queue_name:
