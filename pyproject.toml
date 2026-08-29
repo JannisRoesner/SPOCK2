@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "spock2"
-version = "0.1.3"
+version = "0.1.4"
 description = "SPOCK2 – modularer PySide6-Kiosk-Client für RIKER-Bestellungen und CUPS-/WinSpool-Druck"
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
