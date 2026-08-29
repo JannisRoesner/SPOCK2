@@ -46,7 +46,7 @@ Das `debian/`-Verzeichnis liegt unter `packaging/deb/debian/`. debhelper erwarte
 cd /pfad/zu/SPOCK2
 ln -sfn packaging/deb/debian debian
 dpkg-buildpackage -us -uc -b
-# Ergebnis eine Ebene höher: ../spock2_0.1.0-1_*.deb
+# Ergebnis eine Ebene höher: ../spock2_0.1.1-1_*.deb
 ```
 
 `debian/rules` installiert das Wheel nach `usr/`, plus udev/systemd/Kiosk/Config-Example.
@@ -61,9 +61,9 @@ vagrant ssh -c 'cd /vagrant && ln -sfn packaging/deb/debian debian && dpkg-build
 ## Installation auf dem Zielgerät
 
 ```bash
-sudo apt install -y ./spock2_0.1.0-1_amd64.deb
+sudo apt install -y ./spock2_0.1.1-1_amd64.deb
 # oder:
-sudo dpkg -i spock2_0.1.0-1_amd64.deb
+sudo dpkg -i spock2_0.1.1-1_amd64.deb
 sudo apt-get install -f   # fehlende Depends nachziehen
 ```
 

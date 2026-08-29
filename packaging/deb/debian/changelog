@@ -1,3 +1,9 @@
+spock2 (0.1.1-1) UNRELEASED; urgency=medium
+
+  * Release 0.1.1: Ubuntu 26.04 system Python and apt runtime deps.
+
+ -- SPOCK2 Contributors <spock2@localhost>  Sat, 29 Aug 2026 21:14:00 +0200
+
 spock2 (0.1.0-1) UNRELEASED; urgency=medium
 
   * Packaging for Ubuntu 26.04 LTS (resolute): runtime Python deps from apt.
