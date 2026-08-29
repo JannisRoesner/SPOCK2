@@ -8,7 +8,8 @@ Build-Depends:
  python3-all,
  python3-setuptools,
  python3-pip,
- python3-wheel
+ python3-wheel,
+ python3-build
 Standards-Version: 4.6.2
 Homepage: https://github.com/JannisRoesner/SPOCK2
 Rules-Requires-Root: no

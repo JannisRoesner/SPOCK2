@@ -113,10 +113,11 @@ jobs:
 
       - name: Build .deb
         env:
-          # debian/rules nutzt pip zum Wheel-Build; System-Python ist PEP-668.
-          # Runtime-Deps (PySide6, httpx, …) stehen in debian/control und
-          # müssen hier nicht installiert werden — apt zieht sie auf dem Zielgerät.
+          # Runtime-Deps (PySide6, httpx, …) stehen in debian/control;
+          # apt zieht sie auf dem Zielgerät, nicht in diesem Job.
           PIP_BREAK_SYSTEM_PACKAGES: "1"
+          DEB_PYTHON_INSTALL_LAYOUT: deb
+          PYTHONNOUSERSITE: "1"
         run: |
           ln -sfn packaging/deb/debian debian
           dpkg-buildpackage -us -uc -b

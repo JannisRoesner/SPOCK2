@@ -11,11 +11,11 @@ Ziel: Ubuntu **26.04 LTS** (resolute). Laufzeit nutzt ausschließlich
 sudo apt update
 sudo apt install -y \
   build-essential debhelper dh-python python3-all python3-setuptools \
-  python3-pip python3-wheel \
+  python3-pip python3-wheel python3-build \
   dpkg-dev fakeroot
 ```
 
-Netzwerk nur für den Wheel-Build von SPOCK2 selbst (`python3 -m build`).
+Netzwerk nur, wenn `python3-build` Setuptools aus PyPI holt (`python3 -m build`).
 PySide6 und die übrigen Laufzeit-Libs kommen **nicht** ins `.deb`, sondern
 als `Depends` von Ubuntu 26.04.
 

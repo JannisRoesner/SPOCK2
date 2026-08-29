@@ -10,6 +10,10 @@
 
 export DH_VERBOSE = 1
 export PYBUILD_NAME = spock2
+# Debian/Ubuntu Python 3.12+ nutzt sonst posix_local → /usr/local/bin,
+# dh_usrlocal bricht dann ab („spock2 is not a directory“).
+export DEB_PYTHON_INSTALL_LAYOUT = deb
+export PYTHONNOUSERSITE = 1
 
 %:
 	dh $@ --with python3
@@ -19,11 +23,11 @@ override_dh_auto_clean:
 	rm -rf build dist *.egg-info src/*.egg-info 2>/dev/null || true
 
 override_dh_auto_build:
-	python3 -m pip install --upgrade 'pip>=24' 'build>=1.0' wheel
 	python3 -m build --wheel --outdir dist
 
 override_dh_auto_install:
-	python3 -m pip install --no-deps --root=$(CURDIR)/debian/spock2 \
+	python3 -m pip install --no-deps --no-compile --no-user \
+		--root=$(CURDIR)/debian/spock2 \
 		--prefix=/usr \
 		$(CURDIR)/dist/spock2-*.whl
 	# Deploy-Artefakte (ergänzend zu debian/spock2.install)
