@@ -1,3 +1,11 @@
+spock2 (0.1.7-1) UNRELEASED; urgency=medium
+
+  * CUPS PDF: embed JetBrains Mono (sans-serif, like Consolas on Windows GDI).
+  * Drop [SPEISEN]/[GETRÄNKE] headers on kitchen and counter bons.
+  * Depends: python3-fonttools for receipt font subsetting.
+
+ -- SPOCK2 Contributors <spock2@localhost>  Sun, 30 Aug 2026 10:30:00 +0200
+
 spock2 (0.1.6-1) UNRELEASED; urgency=medium
 
   * RPM packaging: include spock2-probe-queue; avoid duplicate README.md in

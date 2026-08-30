@@ -7,7 +7,7 @@
 # Version mit pyproject.toml abstimmen.
 
 Name:           spock2
-Version:        0.1.6
+Version:        0.1.7
 Release:        1%{?dist}
 Summary:        SPOCK2 kitchen kiosk client (RIKER/PICARD + CUPS)
 License:        AGPL-3.0-or-later
@@ -88,6 +88,8 @@ install -D -m 0644 src/spock2/ui/resources/spock2_icon_256.png \
 %{_datadir}/icons/hicolor/256x256/apps/spock2.png
 
 %changelog
+* Sun Aug 30 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.7-1
+- CUPS PDF: sans-serif JetBrains Mono; no redundant category headers on kitchen/counter bons
 * Sun Aug 30 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.6-1
 - RPM: package spock2-probe-queue; fix duplicate cups README in %doc
 * Sun Aug 30 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.5-1
