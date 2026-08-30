@@ -1,0 +1,6 @@
+JetBrains Mono is licensed under the SIL Open Font License 1.1.
+See https://www.jetbrains.com/lp/mono/
+
+Copyright 2020 The JetBrains Mono Project Authors
+
+Bundled for CUPS receipt PDF rendering (Alt-SPOCK monospace look).

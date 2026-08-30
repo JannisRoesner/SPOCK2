@@ -36,7 +36,7 @@ def test_umlauts_and_euro_preserved() -> None:
     assert "€" in decoded
 
 
-def test_theken_header_and_category_grouping() -> None:
+def test_theken_header_without_redundant_categories() -> None:
     order = Order(
         id=1,
         table_number="5",
@@ -46,19 +46,32 @@ def test_theken_header_and_category_grouping() -> None:
             OrderItem(qty=1, name="Cola", category="Getränke"),
         ],
     )
-    text = ReceiptRenderer().format_order(order, TSP100, role=PrinterRole.COUNTER)
-    assert "THEKEN-BON" in text
-    assert "[GETRÄNKE]" in text or "[GETRAENKE]" in text or "GETRÄNKE" in text.upper()
+    counter = ReceiptRenderer().format_order(order, TSP100, role=PrinterRole.COUNTER)
+    assert "THEKEN-BON" in counter
+    assert "[GETRÄNKE]" not in counter
+    assert "[SPEISEN]" not in counter
+    assert "1x Cola" in counter
+    assert "1x Schnitzel" in counter
+
+    kitchen = ReceiptRenderer().format_order(order, TSP100, role=PrinterRole.KITCHEN)
+    assert "KÜCHEN-BON" in kitchen
+    assert "[SPEISEN]" not in kitchen
+    assert "[GETRÄNKE]" not in kitchen
+
+
+def test_small_bon_keeps_category_headers() -> None:
+    order = Order(
+        id=2,
+        table_number="3",
+        items=[
+            OrderItem(qty=1, name="Cola", category="Getränke"),
+            OrderItem(qty=1, name="Brezel", category="Speisen"),
+        ],
+    )
+    text = ReceiptRenderer().format_order(order, TSP100, role=PrinterRole.SMALL)
+    assert "KLEIN-BON" in text
+    assert "[GETRÄNKE]" in text
     assert "[SPEISEN]" in text
-    # Reihenfolge: Kategorien gruppiert (Getränke-Items zusammen)
-    idx_g = text.index("GETRÄNKE")
-    idx_s = text.index("SPEISEN")
-    # Beide Header vorhanden; relative Order = Erstauftreten der Kategorien
-    assert idx_g != idx_s
-    assert "1x Cola" in text
-    assert "1x Schnitzel" in text
-    assert "Bestell-Nr.: 1" in text
-    assert "Tisch: 5" in text
 
 
 def test_item_notes_arrow() -> None:

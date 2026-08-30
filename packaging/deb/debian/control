@@ -29,6 +29,7 @@ Depends:
  python3-httpx,
  python3-pydantic,
  python3-tomli-w,
+ python3-fonttools,
  python3-cups,
  cups,
  cups-client

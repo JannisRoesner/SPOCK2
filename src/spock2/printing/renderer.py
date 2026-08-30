@@ -87,14 +87,16 @@ class ReceiptRenderer:
         lines.append(dash)
 
         use_items = items if items is not None else list(order.items)
+        show_categories = role not in (PrinterRole.KITCHEN, PrinterRole.COUNTER)
         if use_items:
             grouped = _group_by_category(use_items)
             for category, group_items in grouped.items():
-                show_header = category != "Sonstiges" or len(grouped) > 1
-                if show_header:
-                    lines.append("")
-                    lines.append(f"[{category.upper()}]")
-                    lines.append(dash)
+                if show_categories:
+                    show_header = category != "Sonstiges" or len(grouped) > 1
+                    if show_header:
+                        lines.append("")
+                        lines.append(f"[{category.upper()}]")
+                        lines.append(dash)
                 for item in group_items:
                     qty_line = f"{item.qty}x {item.name}"
                     lines.extend(profile.wrap_text(qty_line))

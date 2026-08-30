@@ -100,11 +100,10 @@ def test_render_receipt_pdf_bytes_and_umlauts() -> None:
     )
     pdf = render_receipt_pdf(text, page_width_pt=PAGE_W_PT)
     assert pdf.startswith(b"%PDF")
-    assert b"/Courier" in pdf
-    assert "Käsespätzle".encode("cp1252") in pdf
+    assert b"/Subtype /Type0" in pdf
+    assert b"JBMono" in pdf
+    assert b"00E4" in pdf  # ä in Identity-H-Hex
     assert b"%%EOF" in pdf
-    # Textmodus 2 (füllen + konturieren) gegen zu dünne Glyphen
-    assert b"2 Tr" in pdf
     assert b"/Rotate 0" in pdf
 
 

@@ -22,6 +22,7 @@ BuildRequires:  python3-setuptools
 BuildRequires:  python3-build
 BuildRequires:  systemd-rpm-macros
 Requires:       python3 >= 3.12
+Requires:       python3-fonttools
 Requires:       cups
 Requires:       cups-client
 Recommends:     cups-pdf
