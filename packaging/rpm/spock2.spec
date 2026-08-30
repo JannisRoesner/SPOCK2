@@ -7,7 +7,7 @@
 # Version mit pyproject.toml abstimmen.
 
 Name:           spock2
-Version:        0.1.5
+Version:        0.1.6
 Release:        1%{?dist}
 Summary:        SPOCK2 kitchen kiosk client (RIKER/PICARD + CUPS)
 License:        AGPL-3.0-or-later
@@ -45,6 +45,10 @@ python3 -m pip install --no-deps --no-compile --no-user \
   --root=%{buildroot} --prefix=/usr \
   %{_builddir}/wheels/spock2-*.whl
 
+install -D -m 0644 README.md \
+  %{buildroot}%{_docdir}/%{name}/README.md
+install -D -m 0644 deploy/cups/README.md \
+  %{buildroot}%{_docdir}/%{name}/cups-README.md
 install -D -m 0644 config/spock2.example.toml \
   %{buildroot}%{_sysconfdir}/spock2/spock2.toml.example
 install -D -m 0644 deploy/udev/99-spock-printers.rules \
@@ -66,10 +70,12 @@ install -D -m 0644 src/spock2/ui/resources/spock2_icon_256.png \
 
 %files
 %license LICENSE
-%doc README.md deploy/cups/README.md
+%{_docdir}/%{name}/README.md
+%{_docdir}/%{name}/cups-README.md
 %config(noreplace) %{_sysconfdir}/spock2/spock2.toml.example
 %{_bindir}/spock2
 %{_bindir}/spock2-probe-usb
+%{_bindir}/spock2-probe-queue
 %{_bindir}/spock2-test-print
 %{python3_sitelib}/spock2*
 %{_udevrulesdir}/99-spock-printers.rules
@@ -81,6 +87,8 @@ install -D -m 0644 src/spock2/ui/resources/spock2_icon_256.png \
 %{_datadir}/icons/hicolor/256x256/apps/spock2.png
 
 %changelog
+* Sun Aug 30 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.6-1
+- RPM: package spock2-probe-queue; fix duplicate cups README in %doc
 * Sun Aug 30 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.5-1
 - CUPS receipts: page length follows the content, no more rotated or scaled bons
 * Sun Aug 30 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.4-1

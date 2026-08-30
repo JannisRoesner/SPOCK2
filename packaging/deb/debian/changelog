@@ -1,3 +1,10 @@
+spock2 (0.1.6-1) UNRELEASED; urgency=medium
+
+  * RPM packaging: include spock2-probe-queue; avoid duplicate README.md in
+    /usr/share/doc/spock2 (cups docs as cups-README.md).
+
+ -- SPOCK2 Contributors <spock2@localhost>  Sun, 30 Aug 2026 10:15:00 +0200
+
 spock2 (0.1.5-1) UNRELEASED; urgency=medium
 
   * Linux/CUPS: receipt page is as long as the receipt, so the roll grows with
