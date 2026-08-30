@@ -19,6 +19,7 @@ from spock2.printing.gdi_layout import (
     gdi_layout_profile,
 )
 from spock2.printing.profiles.tsp100 import TSP100
+from spock2.printing.receipt_fonts import build_receipt_fonts
 from spock2.printing.receipt_pdf import (
     ReceiptLayout,
     RuleOp,
@@ -102,7 +103,11 @@ def test_render_receipt_pdf_bytes_and_umlauts() -> None:
     assert pdf.startswith(b"%PDF")
     assert b"/Subtype /Type0" in pdf
     assert b"JBMono" in pdf
-    assert b"00E4" in pdf  # ä in Identity-H-Hex
+    assert b"<00E4>" in pdf  # ä in ToUnicode, nicht als CID
+    fonts = build_receipt_fonts(text)
+    auml_gid = fonts.regular.unicode_to_gid[ord("ä")]
+    assert fonts.regular.pdf_hex_text("ä") == f"<{auml_gid:04X}>".encode("ascii")
+    assert auml_gid != ord("ä")
     assert b"%%EOF" in pdf
     assert b"/Rotate 0" in pdf
 

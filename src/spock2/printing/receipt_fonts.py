@@ -27,6 +27,7 @@ class EmbeddedMonoFont:
     resource_name: str  # z. B. /F1
     units_per_em: int
     glyph_width: int  # Design-Einheiten (monospace)
+    unicode_to_gid: dict[int, int]
 
     def char_width(self, size: float) -> float:
         return size * self.glyph_width / self.units_per_em
@@ -35,8 +36,8 @@ class EmbeddedMonoFont:
         return len(text) * self.char_width(size)
 
     def pdf_hex_text(self, text: str) -> bytes:
-        """UTF-16BE-Hexstring für Identity-H ``Tj``."""
-        hexchars = "".join(f"{ord(ch):04X}" for ch in text)
+        """Identity-H-Hexstring: CID = Glyph-ID der Subset-TTF, nicht Unicode."""
+        hexchars = "".join(f"{self.unicode_to_gid.get(ord(ch), 0):04X}" for ch in text)
         return f"<{hexchars}>".encode("ascii")
 
 
@@ -62,7 +63,7 @@ def build_receipt_fonts(text: str) -> ReceiptPdfFonts:
 
 
 def _unique_chars(text: str) -> str:
-    return "".join(dict.fromkeys(text))
+    return "".join(dict.fromkeys(ch for ch in f" {text}" if ch == " " or ch.isprintable()))
 
 
 def _font_bytes(bold: bool) -> bytes:
@@ -72,8 +73,10 @@ def _font_bytes(bold: bool) -> bytes:
 
 
 @lru_cache(maxsize=4)
-def _subset_font_bytes(bold: bool, chars: str) -> tuple[bytes, int, int]:
-    """Subset-TTF, unitsPerEm und Glyph-Breite (Design-Einheiten)."""
+def _subset_font_bytes(
+    bold: bool, chars: str
+) -> tuple[bytes, int, int, tuple[tuple[int, int], ...]]:
+    """Subset-TTF, Metriken und Unicode→GID (nach dem kompakten Subset)."""
     raw = _font_bytes(bold)
     font = TTFont(BytesIO(raw))
     opts = Options()
@@ -86,7 +89,19 @@ def _subset_font_bytes(bold: bool, chars: str) -> tuple[bytes, int, int]:
     subset_data = out.getvalue()
     units = int(font["head"].unitsPerEm)
     glyph_width = _mono_glyph_width(font)
-    return subset_data, units, glyph_width
+    mapping = tuple(sorted(_cmap_to_gid(font).items()))
+    return subset_data, units, glyph_width, mapping
+
+
+def _cmap_to_gid(font: TTFont) -> dict[int, int]:
+    cmap = font.getBestCmap() or {}
+    name_to_gid = {name: gid for gid, name in enumerate(font.getGlyphOrder())}
+    mapping: dict[int, int] = {}
+    for code, name in cmap.items():
+        gid = name_to_gid.get(name)
+        if gid is not None:
+            mapping[int(code)] = int(gid)
+    return mapping
 
 
 def _mono_glyph_width(font: TTFont) -> int:
@@ -105,7 +120,8 @@ def _embed_font(
     object_id: int,
     resource_name: str,
 ) -> EmbeddedMonoFont:
-    ttf_data, units, glyph_width = _subset_font_bytes(bold, chars)
+    ttf_data, units, glyph_width, mapping_pairs = _subset_font_bytes(bold, chars)
+    unicode_to_gid = dict(mapping_pairs)
     base_name = "JBMono-Bold" if bold else "JBMono-Regular"
     font_stream = zlib.compress(ttf_data)
     descriptor_id = object_id + 2
@@ -114,7 +130,7 @@ def _embed_font(
     to_unicode_id = object_id + 4
 
     width_pt = glyph_width * 1000 // units  # skaliert für DW/W (Tausendstel em)
-    w_array = _build_w_array(chars, width_pt)
+    w_array = _build_w_array(unicode_to_gid, width_pt)
 
     objects = (
         _type0_font_object(base_name=base_name, cid_id=cid_id, to_unicode_id=to_unicode_id),
@@ -130,13 +146,14 @@ def _embed_font(
             bbox=_font_bbox(ttf_data),
         ),
         _font_file_stream_object(data=font_stream),
-        _to_unicode_cmap_object(chars=chars),
+        _to_unicode_cmap_object(unicode_to_gid),
     )
     return EmbeddedMonoFont(
         pdf_objects=objects,
         resource_name=resource_name,
         units_per_em=units,
         glyph_width=glyph_width,
+        unicode_to_gid=unicode_to_gid,
     )
 
 
@@ -146,11 +163,11 @@ def _font_bbox(ttf_data: bytes) -> tuple[int, int, int, int]:
     return int(head.xMin), int(head.yMin), int(head.xMax), int(head.yMax)
 
 
-def _build_w_array(chars: str, width_pt: int) -> str:
-    """PDF ``/W``-Einträge: CID = Unicode code point → Breite."""
+def _build_w_array(unicode_to_gid: dict[int, int], width_pt: int) -> str:
+    """PDF ``/W``-Einträge: CID = Glyph-ID → Breite."""
     parts: list[str] = []
-    for ch in _unique_chars(chars):
-        parts.append(f"{ord(ch)} [{width_pt}]")
+    for gid in sorted(set(unicode_to_gid.values())):
+        parts.append(f"{gid} [{width_pt}]")
     return " ".join(parts)
 
 
@@ -201,8 +218,8 @@ def _font_file_stream_object(*, data: bytes) -> bytes:
     )
 
 
-def _to_unicode_cmap_object(*, chars: str) -> bytes:
-    """Minimale ToUnicode-CMap für Identity-H (Druck braucht sie selten, Viewer schon)."""
+def _to_unicode_cmap_object(unicode_to_gid: dict[int, int]) -> bytes:
+    """ToUnicode: CID (Glyph-ID) → Unicode. Druck rendert über CIDToGIDMap."""
     lines = [
         "/CIDInit /ProcSet findresource begin",
         "12 dict begin",
@@ -214,13 +231,13 @@ def _to_unicode_cmap_object(*, chars: str) -> bytes:
         "<0000> <FFFF>",
         "endcodespacerange",
     ]
-    unique = _unique_chars(chars)
+    pairs = sorted(unicode_to_gid.items(), key=lambda item: item[1])
     batch_size = 100
-    for start in range(0, len(unique), batch_size):
-        batch = unique[start : start + batch_size]
+    for start in range(0, len(pairs), batch_size):
+        batch = pairs[start : start + batch_size]
         lines.append(f"{len(batch)} beginbfchar")
-        for ch in batch:
-            lines.append(f"<{ord(ch):04X}> <{ord(ch):04X}>")
+        for code, gid in batch:
+            lines.append(f"<{gid:04X}> <{code:04X}>")
         lines.append("endbfchar")
     lines.extend(["endcmap", "CMapName currentdict /CMap defineresource pop", "end", "end"])
     cmap = "\n".join(lines).encode("ascii")
