@@ -676,14 +676,14 @@ class AdminDialog(QDialog):
         if admin_pin:
             text, ok = QInputDialog.getText(
                 parent,
-                "Admin-PIN",
+                "PIN für Einstellungen",
                 "PIN eingeben:",
                 QLineEdit.EchoMode.Password,
             )
             if not ok:
                 return None
             if text != admin_pin:
-                QMessageBox.warning(parent, "Admin", "Falscher PIN.")
+                QMessageBox.warning(parent, "Einstellungen", "Falscher PIN.")
                 return None
         dlg = cls(
             config,

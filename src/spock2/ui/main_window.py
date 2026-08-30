@@ -279,29 +279,30 @@ class MainWindow(QMainWindow):
             heights[target] += card.sizeHint().height() + column_layout.spacing()
 
     def _build_menu(self) -> None:
+        """Flache Menüleiste: häufige Aktionen ohne Ein-Eintrag-Untermenüs."""
         menubar = self.menuBar()
 
-        file_menu = menubar.addMenu("Ansicht")
+        settings_action = QAction("Einstellungen…", self)
+        settings_action.setShortcut(QKeySequence.StandardKey.Preferences)
+        settings_action.triggered.connect(self._on_admin)
+        menubar.addAction(settings_action)
+
+        if self._notes is not None and self._notes.enabled:
+            write_action = QAction("Zettel schreiben…", self)
+            write_action.triggered.connect(self._on_write_note)
+            menubar.addAction(write_action)
+
+        menubar.addSeparator()
+
         fs_action = QAction("Vollbild umschalten", self)
         fs_action.setShortcut(QKeySequence(Qt.Key.Key_F11))
         fs_action.triggered.connect(self.toggle_fullscreen)
-        file_menu.addAction(fs_action)
+        menubar.addAction(fs_action)
 
         quit_action = QAction("Beenden", self)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
         quit_action.triggered.connect(self.close)
-        file_menu.addAction(quit_action)
-
-        if self._notes is not None and self._notes.enabled:
-            notes_menu = menubar.addMenu("Zettel")
-            write_action = QAction("Zettel schreiben…", self)
-            write_action.triggered.connect(self._on_write_note)
-            notes_menu.addAction(write_action)
-
-        admin_menu = menubar.addMenu("Admin")
-        admin_action = QAction("Einstellungen…", self)
-        admin_action.triggered.connect(self._on_admin)
-        admin_menu.addAction(admin_action)
+        menubar.addAction(quit_action)
 
     def _connect_services(self) -> None:
         self._orders.orders_changed.connect(self._on_orders_changed)
@@ -359,7 +360,7 @@ class MainWindow(QMainWindow):
             return
         self._tls_warned.add(name)
         self.show_problem(
-            f"{name}: Zertifikat nicht vertrauenswürdig. Admin → Einstellungen → "
+            f"{name}: Zertifikat nicht vertrauenswürdig. Menü → Einstellungen → "
             "APIs → TLS: CA-Bundle hinterlegen oder Prüfung abschalten."
         )
 
@@ -387,7 +388,7 @@ class MainWindow(QMainWindow):
             self.show_problem(
                 "Drucker nicht bereit – "
                 + "; ".join(sorted(new))
-                + ". Admin → Einstellungen → Drucker."
+                + ". Menü → Einstellungen → Drucker."
             )
 
     def set_pending_jobs(self, count: int) -> None:
