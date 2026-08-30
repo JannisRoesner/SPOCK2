@@ -1,3 +1,10 @@
+spock2 (0.1.8-1) UNRELEASED; urgency=medium
+
+  * Menu bar: flat text actions (Einstellungen, Zettel schreiben, Vollbild,
+    Beenden) instead of single-entry dropdowns.
+
+ -- SPOCK2 Contributors <spock2@localhost>  Sun, 30 Aug 2026 10:40:00 +0200
+
 spock2 (0.1.7-1) UNRELEASED; urgency=medium
 
   * CUPS PDF: embed JetBrains Mono (sans-serif, like Consolas on Windows GDI).
