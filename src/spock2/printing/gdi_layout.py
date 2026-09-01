@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
+from spock2.printing.note_priority import parse_priority_line
 from spock2.printing.profiles.base import PrinterProfile
 
 # Alt-SPOCK Windows-GDI: 32 Spalten, Consolas 10 pt
@@ -35,6 +36,7 @@ _HEADER_TITLES = frozenset(
 class GdiLineKind(StrEnum):
     EMPTY = "empty"
     HEADER = "header"
+    PRIORITY_LINE = "priority_line"
     TABLE_META = "table_meta"
     CATEGORY = "category"
     QTY = "qty"
@@ -51,6 +53,8 @@ class GdiLine:
     rest: str = ""
     order_part: str = ""
     table_number: str = ""
+    priority_icon: str = ""  # ``warning`` | ``siren``
+    priority_label: str = ""
 
 
 def gdi_layout_profile(profile: PrinterProfile) -> PrinterProfile:
@@ -92,6 +96,15 @@ def classify_line(line: str, index: int) -> GdiLine:
 
     if stripped in _HEADER_TITLES or index == 1:
         return GdiLine(kind=GdiLineKind.HEADER, text=line)
+
+    priority = parse_priority_line(stripped)
+    if priority is not None:
+        return GdiLine(
+            kind=GdiLineKind.PRIORITY_LINE,
+            text=line,
+            priority_icon=priority.icon,
+            priority_label=priority.label,
+        )
 
     if (
         stripped.startswith("(")

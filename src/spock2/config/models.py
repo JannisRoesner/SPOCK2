@@ -30,7 +30,7 @@ class PicardConfig(BaseModel):
     read_timeout_s: float = 10.0
     session_id: str = ""
     kitchen_note_types: list[str] = Field(
-        default_factory=lambda: ["anKueche", "anKüche", "kueche", "küche"]
+        default_factory=lambda: ["anKueche", "anKüche", "kueche", "küche", "anAlle"]
     )
 
 

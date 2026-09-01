@@ -21,6 +21,7 @@ from spock2.printing.gdi_layout import (
 from spock2.printing.profiles.tsp100 import TSP100
 from spock2.printing.receipt_fonts import build_receipt_fonts
 from spock2.printing.receipt_pdf import (
+    IconOp,
     ReceiptLayout,
     RuleOp,
     TextOp,
@@ -40,9 +41,14 @@ def test_cups_payload_format_pdf_vs_text() -> None:
 
 
 def test_classify_note_priority_header() -> None:
-    lines = ["=" * 32, "ZETTEL".center(32), "(HOCH)".center(32), "=" * 32]
+    line = "ZETTEL".center(32)
+    prio = "@PRIO:wichtig:WICHTIG@".center(32)
+    lines = ["=" * 32, line, prio, "=" * 32]
     assert classify_line(lines[1], 1).kind == GdiLineKind.HEADER
-    assert classify_line(lines[2], 2).kind == GdiLineKind.HEADER
+    parsed = classify_line(lines[2], 2)
+    assert parsed.kind == GdiLineKind.PRIORITY_LINE
+    assert parsed.priority_icon == "warning"
+    assert parsed.priority_label == "WICHTIG"
 
 
 def test_pdf_order_has_large_table_and_rules() -> None:
@@ -79,15 +85,52 @@ def test_pdf_note_large_zettel_title() -> None:
         id="n1",
         text="Bitte Tisch 4 bedienen – dringend!",
         sender="Moderation",
-        priority="hoch",
+        priority="wichtig",
         timestamp="2026-07-23T15:00:00+02:00",
     )
     text = ReceiptRenderer().format_note(note, gdi_layout_profile(TSP100))
     layout = layout_receipt(text, page_width_pt=PAGE_W_PT)
     titles = [op for op in layout.ops if isinstance(op, TextOp) and op.text == "ZETTEL"]
     assert titles and titles[0].size == layout.header_pt
-    prio = [op for op in layout.ops if isinstance(op, TextOp) and "(HOCH)" in op.text]
-    assert prio and prio[0].bold is True
+    prio = [op for op in layout.ops if isinstance(op, TextOp) and op.text == "\u26a0"]
+    assert len(prio) == 2
+    labels = [op for op in layout.ops if isinstance(op, TextOp) and op.text == "WICHTIG"]
+    assert len(labels) == 1
+
+
+def test_pdf_note_dringend_renders_siren_icon() -> None:
+    note = Note(
+        id="n2",
+        text="Sofort an die Theke!",
+        sender="Moderation",
+        priority="dringend",
+        timestamp="2026-07-23T15:05:00+02:00",
+    )
+    text = ReceiptRenderer().format_note(note, gdi_layout_profile(TSP100))
+    layout = layout_receipt(text, page_width_pt=PAGE_W_PT)
+    sirens = [op for op in layout.ops if isinstance(op, IconOp) and op.kind == "siren"]
+    assert len(sirens) == 2
+    labels = [op for op in layout.ops if isinstance(op, TextOp) and op.text == "DRINGEND"]
+    assert len(labels) == 1
+    pdf = render_receipt_pdf(text, page_width_pt=PAGE_W_PT)
+    assert pdf.startswith(b"%PDF")
+    assert b" arc " in pdf
+
+
+def test_pdf_note_normal_has_no_priority_icon() -> None:
+    note = Note(
+        id="n3",
+        text="Alles ok.",
+        sender="Küche",
+        priority="normal",
+    )
+    text = ReceiptRenderer().format_note(note, gdi_layout_profile(TSP100))
+    layout = layout_receipt(text, page_width_pt=PAGE_W_PT)
+    assert not any(isinstance(op, IconOp) for op in layout.ops)
+    assert not any(
+        isinstance(op, TextOp) and op.text in {"\u26a0", "WICHTIG", "DRINGEND"}
+        for op in layout.ops
+    )
 
 
 def test_render_receipt_pdf_bytes_and_umlauts() -> None:

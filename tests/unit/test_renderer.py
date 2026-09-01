@@ -102,12 +102,13 @@ def test_note_zettel_layout() -> None:
         id="n1",
         text="Bitte Tisch 4 bedienen – dringend!",
         sender="Moderation",
-        priority="hoch",
+        priority="wichtig",
         timestamp="2026-07-23T15:00:00+02:00",
     )
     text = ReceiptRenderer().format_note(note, POS5890K)
     assert "ZETTEL" in text
-    assert "(HOCH)" in text
+    assert "@PRIO:wichtig:WICHTIG@" in text
+    assert "(WICHTIG)" not in text
     assert "Von: Moderation" in text
     assert "Bitte Tisch 4" in text
     assert "Zeit: 15:00" in text

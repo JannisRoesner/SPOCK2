@@ -51,6 +51,36 @@ def test_get_notes_filters_kitchen(httpx_mock: HTTPXMock, client: PicardClient) 
     assert notes[0].text == "Mehr Pommes"
 
 
+def test_get_notes_includes_an_alle(httpx_mock: HTTPXMock, client: PicardClient) -> None:
+    httpx_mock.add_response(
+        url="https://picard.test/api/sitzung/sess-1/zettel",
+        json=[
+            {
+                "id": "n1",
+                "text": "Pause in 5 Minuten",
+                "type": "anAlle",
+                "priority": "wichtig",
+                "sender": "Moderation",
+                "timestamp": "2026-07-23T12:00:00",
+                "geschlossen": 0,
+            },
+            {
+                "id": "n2",
+                "text": "Nur Kulisse",
+                "type": "anKulissen",
+                "priority": "normal",
+                "sender": "Regie",
+                "timestamp": "2026-07-23T12:01:00",
+                "geschlossen": 0,
+            },
+        ],
+    )
+    notes = client.get_notes()
+    assert len(notes) == 1
+    assert notes[0].id == "n1"
+    assert notes[0].type == "anAlle"
+
+
 def test_missing_session_and_no_active_returns_empty(httpx_mock: HTTPXMock) -> None:
     c = PicardClient("https://picard.test", session_id=None)
     httpx_mock.add_response(

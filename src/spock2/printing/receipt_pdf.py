@@ -60,13 +60,21 @@ class RuleOp:
 
 
 @dataclass(frozen=True, slots=True)
+class IconOp:
+    kind: str  # ``warning`` | ``siren``
+    x_center: float
+    y_top: float
+    size: float
+
+
+@dataclass(frozen=True, slots=True)
 class ReceiptLayout:
     page_w: float
     page_h: float
     base_pt: float
     header_pt: float
     table_pt: float
-    ops: tuple[TextOp | RuleOp, ...] = field(default_factory=tuple)
+    ops: tuple[TextOp | RuleOp | IconOp, ...] = field(default_factory=tuple)
 
 
 def layout_receipt(
@@ -93,7 +101,7 @@ def layout_receipt(
     header_lead = header_pt * 1.15
     table_lead = table_pt * 1.05
 
-    ops: list[TextOp | RuleOp] = []
+    ops: list[TextOp | RuleOp | IconOp] = []
     y = _MARGIN_PT
     lines = list(text.splitlines())
     lines.extend(["", ""])
@@ -114,6 +122,65 @@ def layout_receipt(
             text_w = width_fn(stripped, header_pt)
             x = _MARGIN_PT + max(0.0, (usable - text_w) / 2.0)
             ops.append(TextOp(x=x, y_top=y, size=header_pt, bold=True, text=stripped))
+            y += header_lead
+            continue
+
+        if parsed.kind == GdiLineKind.PRIORITY_LINE:
+            icon_pt = header_pt * 1.15
+            label_pt = header_pt
+            gap = width_fn("  ", label_pt)
+            label = parsed.priority_label
+            label_w = width_fn(label, label_pt)
+            icon_kind = parsed.priority_icon or "warning"
+            if icon_kind == "siren":
+                icon_w = icon_pt * 0.95
+            else:
+                icon_w = width_fn("\u26a0", icon_pt)
+            total_w = icon_w + gap + label_w + gap + icon_w
+            x = _MARGIN_PT + max(0.0, (usable - total_w) / 2.0)
+            if icon_kind == "siren":
+                ops.append(
+                    IconOp(kind="siren", x_center=x + icon_w / 2.0, y_top=y, size=icon_pt)
+                )
+                ops.append(
+                    TextOp(
+                        x=x + icon_w + gap,
+                        y_top=y,
+                        size=label_pt,
+                        bold=True,
+                        text=label,
+                    )
+                )
+                ops.append(
+                    IconOp(
+                        kind="siren",
+                        x_center=x + icon_w + gap + label_w + gap + icon_w / 2.0,
+                        y_top=y,
+                        size=icon_pt,
+                    )
+                )
+            else:
+                ops.append(
+                    TextOp(x=x, y_top=y, size=icon_pt, bold=True, text="\u26a0")
+                )
+                ops.append(
+                    TextOp(
+                        x=x + icon_w + gap,
+                        y_top=y,
+                        size=label_pt,
+                        bold=True,
+                        text=label,
+                    )
+                )
+                ops.append(
+                    TextOp(
+                        x=x + icon_w + gap + label_w + gap,
+                        y_top=y,
+                        size=icon_pt,
+                        bold=True,
+                        text="\u26a0",
+                    )
+                )
             y += header_lead
             continue
 
@@ -199,7 +266,7 @@ def pdf_media_size_pt(data: bytes) -> tuple[float, float] | None:
 
 
 def _layout_table_meta(
-    ops: list[TextOp | RuleOp],
+    ops: list[TextOp | RuleOp | IconOp],
     *,
     y: float,
     order_part: str,
@@ -243,6 +310,9 @@ def _content_stream(layout: ReceiptLayout, fonts: ReceiptPdfFonts) -> bytes:
     buf = bytearray()
     right = layout.page_w - _MARGIN_PT
     for op in layout.ops:
+        if isinstance(op, IconOp):
+            _append_priority_icon(buf, op, page_h=layout.page_h)
+            continue
         if isinstance(op, RuleOp):
             y1 = layout.page_h - op.y
             buf += f"{_RULE_WIDTH_PT:.2f} w\n".encode("ascii")
@@ -259,6 +329,38 @@ def _content_stream(layout: ReceiptLayout, fonts: ReceiptPdfFonts) -> bytes:
         buf += face.pdf_hex_text(op.text)
         buf += b" Tj ET\n"
     return bytes(buf)
+
+
+def _append_priority_icon(buf: bytearray, op: IconOp, *, page_h: float) -> None:
+    """Vektor-Sirene für ``dringend`` (Warnung nutzt ⚠ als TextOp)."""
+    if op.kind != "siren":
+        return
+    s = op.size
+    cx = op.x_center
+    y_bottom = page_h - op.y_top - s
+    base_w = s * 0.62
+    base_h = s * 0.2
+    dome_r = s * 0.3
+    base_y = y_bottom
+    dome_cy = base_y + base_h + dome_r * 0.9
+
+    buf += b"q\n"
+    buf += b"0 g\n"
+    # Sockel
+    buf += f"{cx - base_w / 2:.2f} {base_y:.2f} {base_w:.2f} {base_h:.2f} re f\n".encode(
+        "ascii"
+    )
+    # Kuppel
+    buf += f"{cx:.2f} {dome_cy:.2f} {dome_r:.2f} 0 360 arc f\n".encode("ascii")
+    # Lichtstrahlen
+    buf += f"{max(1.0, s * 0.08):.2f} w\n".encode("ascii")
+    ray_base = dome_cy + dome_r
+    for offset in (-0.45, 0.0, 0.45):
+        x0 = cx + offset * dome_r
+        x1 = cx + offset * dome_r * 1.55
+        y1 = ray_base + dome_r * 0.65
+        buf += f"{x0:.2f} {ray_base:.2f} m {x1:.2f} {y1:.2f} l S\n".encode("ascii")
+    buf += b"Q\n"
 
 
 def _assemble_pdf(

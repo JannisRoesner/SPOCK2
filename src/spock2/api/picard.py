@@ -21,7 +21,7 @@ from spock2.domain.notes import Note
 
 logger = logging.getLogger(__name__)
 
-# Normalized kitchen targets (casefold, spaces/hyphens → underscore stripped form)
+# Normalized printable targets (casefold, spaces/hyphens → underscore stripped form)
 KITCHEN_TARGET_VALUES: set[str] = {
     "ankueche",
     "an_kueche",
@@ -30,6 +30,12 @@ KITCHEN_TARGET_VALUES: set[str] = {
     "kueche",
     "küche",
     "kitchen",
+    # Broadcast targets — kitchen kiosk should print these too
+    "analle",
+    "an_alle",
+    "alle",
+    "all",
+    "everyone",
 }
 
 
@@ -284,7 +290,7 @@ class PicardClient:
 
     def get_notes(self, include_closed: bool = False) -> list[Note]:
         """
-        Fetch kitchen-targeted Zettel for the current session.
+        Fetch printable Zettel for the current session (kitchen + broadcast targets).
 
         Missing session → ``[]`` with a warning (not a raised SpockError).
         HTTP failures raise typed errors.

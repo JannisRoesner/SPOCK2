@@ -17,8 +17,8 @@ connect_timeout_s = 3.0
 read_timeout_s = 10.0
 # Optional: feste Sitzungs-ID; leer = GET /api/aktive-sitzung
 session_id = ""
-# Zettel-Typen, die als Küchen-Ziel gelten (tolerant normalisiert)
-kitchen_note_types = ["anKueche", "anKüche", "kueche", "küche"]
+# Zettel-Typen, die gedruckt werden (tolerant normalisiert)
+kitchen_note_types = ["anKueche", "anKüche", "kueche", "küche", "anAlle"]
 
 [tls]
 # TLS-Zertifikatsprüfung. Auch über Einstellungen → APIs änderbar.

@@ -143,6 +143,23 @@ def _render_page(
             y += header_spacing
             continue
 
+        if parsed.kind == GdiLineKind.PRIORITY_LINE:
+            label = parsed.priority_label
+            icon_text = "\u26a0" if parsed.priority_icon != "siren" else "!!"
+            line_text = f"{icon_text}  {label}  {icon_text}"
+            icon_pt = int(header_pt * 1.15)
+            icon_height = -int(icon_pt * dpi_y / 72)
+            icon_font = win32ui.CreateFont(
+                {"name": family, "height": icon_height, "weight": 700}
+            )
+            fonts.append(icon_font)
+            hDC.SelectObject(icon_font)
+            text_w = _extent_w(hDC, icon_font, line_text)
+            x_centered = x + max(0, (receipt_w - text_w) // 2)
+            hDC.TextOut(x_centered, y, line_text)
+            y += header_spacing
+            continue
+
         if parsed.kind == GdiLineKind.TABLE_META:
             y = _draw_table_meta(
                 hDC,

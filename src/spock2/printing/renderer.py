@@ -9,6 +9,7 @@ from typing import Any
 from spock2.domain.notes import Note
 from spock2.domain.orders import Order, OrderItem
 from spock2.domain.print_job import PrinterRole
+from spock2.printing.note_priority import note_priority_display_lines
 from spock2.printing.profiles.base import PrinterProfile
 
 
@@ -115,14 +116,13 @@ class ReceiptRenderer:
         width = profile.line_width_chars
         sep = profile.separator("=")
         dash = profile.separator("-")
-        priority = str(note.priority if note.priority is not None else "normal")
 
         lines: list[str] = [
             sep,
             profile.center("ZETTEL"),
-            profile.center(f"({priority.upper()})"),
-            sep,
         ]
+        lines.extend(note_priority_display_lines(note.priority, profile))
+        lines.append(sep)
         time_str = _parse_time(note.timestamp)
         if time_str:
             lines.append(f"Zeit: {time_str}")
