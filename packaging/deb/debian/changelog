@@ -1,3 +1,11 @@
+spock2 (0.1.10-1) UNRELEASED; urgency=medium
+
+  * PICARD: also print Zettel addressed to anAlle (broadcast).
+  * Zettel bons: show wichtig/dringend priority as icon-label-icon row in
+    CUPS PDF receipts (warning sign and siren vector).
+
+ -- SPOCK2 Contributors <spock2@localhost>  Tue, 01 Sep 2026 14:05:00 +0200
+
 spock2 (0.1.9-1) UNRELEASED; urgency=medium
 
   * CUPS PDF: encode Identity-H text as subset glyph IDs so thermal
