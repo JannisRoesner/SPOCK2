@@ -7,7 +7,7 @@
 # Version mit pyproject.toml abstimmen.
 
 Name:           spock2
-Version:        0.1.10
+Version:        0.1.11
 Release:        1%{?dist}
 Summary:        SPOCK2 kitchen kiosk client (RIKER/PICARD + CUPS)
 License:        AGPL-3.0-or-later
@@ -88,6 +88,8 @@ install -D -m 0644 src/spock2/ui/resources/spock2_icon_256.png \
 %{_datadir}/icons/hicolor/256x256/apps/spock2.png
 
 %changelog
+* Sat Sep 12 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.11-1
+- RIKER: poll settlement slips and print close-out on the counter printer
 * Tue Sep 01 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.10-1
 - PICARD: print anAlle Zettel; Zettel bons show priority icons (wichtig/dringend) in CUPS PDF
 * Sun Aug 30 2026 SPOCK2 Contributors <spock2@localhost> - 0.1.9-1

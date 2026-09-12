@@ -1,3 +1,10 @@
+spock2 (0.1.11-1) UNRELEASED; urgency=medium
+
+  * RIKER: poll GET /api/settlements and print close-out slips on the
+    counter printer (fallback to the next assigned queue).
+
+ -- SPOCK2 Contributors <spock2@localhost>  Sat, 12 Sep 2026 15:57:00 +0200
+
 spock2 (0.1.10-1) UNRELEASED; urgency=medium
 
   * PICARD: also print Zettel addressed to anAlle (broadcast).
