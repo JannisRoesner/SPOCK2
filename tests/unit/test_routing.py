@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from spock2.config.models import RoutingConfig
+from spock2.config.models import AppConfig, PrinterConfig, RoutingConfig
 from spock2.domain.orders import Order, OrderItem
 from spock2.domain.print_job import PrinterRole
 from spock2.printing.routing import (
     items_for_role,
     resolve_role_for_note,
+    resolve_role_for_settlement,
     resolve_roles_for_order,
 )
 
@@ -84,6 +85,51 @@ def test_multi_role_category() -> None:
 def test_note_uses_station_role() -> None:
     routing = RoutingConfig(station_role="counter")
     assert resolve_role_for_note(routing) == PrinterRole.COUNTER
+
+
+def test_settlement_prefers_counter_printer() -> None:
+    cfg = AppConfig(
+        printers={
+            "kitchen": PrinterConfig(
+                role="kitchen", queue="spock-kitchen", profile="tsp100"
+            ),
+            "counter": PrinterConfig(
+                role="counter", queue="Theke", profile="tsp100"
+            ),
+        }
+    )
+    assert resolve_role_for_settlement(cfg) == PrinterRole.COUNTER
+
+
+def test_settlement_falls_back_when_counter_unassigned() -> None:
+    cfg = AppConfig(
+        printers={
+            "kitchen": PrinterConfig(
+                role="kitchen", queue="spock-kitchen", profile="tsp100"
+            ),
+            "counter": PrinterConfig(
+                role="counter", queue="", profile="tsp100", enabled=True
+            ),
+            "small": PrinterConfig(
+                role="small", queue="spock-small", profile="pos5890k"
+            ),
+        }
+    )
+    assert resolve_role_for_settlement(cfg) == PrinterRole.KITCHEN
+
+
+def test_settlement_skips_disabled_counter() -> None:
+    cfg = AppConfig(
+        printers={
+            "counter": PrinterConfig(
+                role="counter", queue="Theke", profile="tsp100", enabled=False
+            ),
+            "small": PrinterConfig(
+                role="small", queue="Mini", profile="pos5890k"
+            ),
+        }
+    )
+    assert resolve_role_for_settlement(cfg) == PrinterRole.SMALL
 
 
 def test_items_for_role_filters() -> None:

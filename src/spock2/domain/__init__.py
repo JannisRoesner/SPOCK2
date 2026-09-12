@@ -8,6 +8,7 @@ from spock2.domain.print_job import (
     PrintJobStatus,
     SourceType,
 )
+from spock2.domain.settlements import SettlementSlip
 from spock2.domain.status import ApiStatus, AppStatus, ConnectionState, PrinterStatus
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "PrintJobStatus",
     "PrinterRole",
     "PrinterStatus",
+    "SettlementSlip",
     "SourceType",
 ]

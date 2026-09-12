@@ -4,6 +4,7 @@ from spock2.services.connection_monitor import ConnectionMonitor
 from spock2.services.note_service import NoteService
 from spock2.services.order_service import CompleteWorker, OrderService
 from spock2.services.printer_health import PrinterHealth
+from spock2.services.settlement_service import SettlementCompleteWorker, SettlementService
 
 __all__ = [
     "CompleteWorker",
@@ -11,4 +12,6 @@ __all__ = [
     "NoteService",
     "OrderService",
     "PrinterHealth",
+    "SettlementCompleteWorker",
+    "SettlementService",
 ]

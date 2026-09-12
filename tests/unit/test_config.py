@@ -31,6 +31,7 @@ def test_example_toml_loads() -> None:
 def test_defaults() -> None:
     cfg = AppConfig()
     assert cfg.print.auto_complete_after_print is False
+    assert cfg.print.auto_print_new_settlements is True
     assert cfg.print.transport == "auto"
     assert cfg.tls.ssl_verify is True
     assert cfg.polling.riker_interval_s == 3.0
@@ -117,6 +118,7 @@ def test_auto_complete_hook_conditions() -> None:
         (True, PrintJobStatus.FAILED, SourceType.RIKER_ORDER, False),
         (True, PrintJobStatus.COMPLETED, SourceType.PICARD_NOTE, False),
         (True, PrintJobStatus.COMPLETED, SourceType.MANUAL_TEST, False),
+        (True, PrintJobStatus.COMPLETED, SourceType.RIKER_SETTLEMENT, False),
         (True, PrintJobStatus.COMPLETED, SourceType.RIKER_ORDER, True),
     ],
 )

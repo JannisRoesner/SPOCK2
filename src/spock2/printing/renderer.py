@@ -9,6 +9,7 @@ from typing import Any
 from spock2.domain.notes import Note
 from spock2.domain.orders import Order, OrderItem
 from spock2.domain.print_job import PrinterRole
+from spock2.domain.settlements import SettlementSlip
 from spock2.printing.note_priority import note_priority_display_lines
 from spock2.printing.profiles.base import PrinterProfile
 
@@ -132,6 +133,14 @@ class ReceiptRenderer:
         lines.extend(profile.wrap_text(note.text or ""))
         lines.append(sep)
         return "\n".join(self._apply_hard_wrap(lines, width))
+
+    def format_settlement(self, slip: SettlementSlip, profile: PrinterProfile) -> str:
+        """Druckt den von RIKER vorformatierten Thermal-Zettel unverändert."""
+        _ = profile
+        text = (slip.text or "").rstrip()
+        if text:
+            return text
+        return "RIKER\nABRECHNUNG\n(kein Text)"
 
     def format_test(self, role: PrinterRole, profile: PrinterProfile) -> str:
         """Kurze Testseite für Diagnose."""

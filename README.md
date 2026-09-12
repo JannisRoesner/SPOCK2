@@ -1,8 +1,10 @@
 # SPOCK2
 
 Modularer **PySide6**-Kiosk-Client für **Linux** (CUPS) und **Windows** (WinSpool).
-Holt offene Bestellungen von **RIKER**, optional Zettel von **PICARD**, und druckt über
-Rollenqueues (`kitchen` / `counter` / `small`) mit persistenter SQLite-Druckqueue.
+Holt offene Bestellungen und Abrechnungszettel von **RIKER**, optional Zettel von
+**PICARD**, und druckt über Rollenqueues (`kitchen` / `counter` / `small`) mit
+persistenter SQLite-Druckqueue. Abrechnungen gehen an die Theke, sonst an den
+nächsten in den Einstellungen belegten Drucker.
 
 ## Voraussetzungen
 

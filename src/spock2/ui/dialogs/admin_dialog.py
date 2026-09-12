@@ -309,6 +309,12 @@ class AdminDialog(QDialog):
         self._auto_notes.setChecked(self._working.print.auto_print_new_notes)
         layout.addWidget(self._auto_notes)
 
+        self._auto_settlements = QCheckBox(
+            "Abrechnungszettel von RIKER automatisch drucken (Theke)"
+        )
+        self._auto_settlements.setChecked(self._working.print.auto_print_new_settlements)
+        layout.addWidget(self._auto_settlements)
+
         self._auto_complete = QCheckBox(
             "Bestellung nach erfolgreichem Druck als erledigt markieren"
         )
@@ -570,6 +576,7 @@ class AdminDialog(QDialog):
         cfg.polling.interval_s = cfg.polling.riker_interval_s
         cfg.print.auto_print_new_orders = self._auto_orders.isChecked()
         cfg.print.auto_print_new_notes = self._auto_notes.isChecked()
+        cfg.print.auto_print_new_settlements = self._auto_settlements.isChecked()
         cfg.print.auto_complete_after_print = self._auto_complete.isChecked()
         transport = self._transport.currentData()
         if transport in ("auto", "cups", "winspool", "file"):

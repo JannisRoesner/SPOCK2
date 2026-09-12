@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
-from spock2.config.models import RoutingConfig
+from collections.abc import Iterable
+
+from spock2.config.models import AppConfig, PrinterConfig, RoutingConfig
 from spock2.domain.orders import Order, OrderItem
 from spock2.domain.print_job import PrinterRole
+
+_SETTLEMENT_ROLE_PRIORITY = (
+    PrinterRole.COUNTER,
+    PrinterRole.KITCHEN,
+    PrinterRole.SMALL,
+)
 
 
 def _station_role(routing: RoutingConfig) -> PrinterRole:
@@ -67,6 +75,34 @@ def resolve_role_for_note(routing: RoutingConfig) -> PrinterRole:
         return _station_role(routing)
     except ValueError:
         return PrinterRole.KITCHEN
+
+
+def _printer_is_assigned(printer: PrinterConfig | None) -> bool:
+    return printer is not None and bool(str(printer.queue).strip())
+
+
+def resolve_role_for_settlement(
+    config: AppConfig,
+    *,
+    printers: Iterable[PrinterConfig] | None = None,
+) -> PrinterRole:
+    """Abrechnung: Theke zuerst, sonst erster belegter Drucker aus den Einstellungen."""
+    by_role: dict[PrinterRole, PrinterConfig] = {}
+    source = printers if printers is not None else config.printers.values()
+    for printer in source:
+        if not printer.enabled:
+            continue
+        try:
+            role = PrinterRole(printer.role)
+        except ValueError:
+            continue
+        if role not in by_role and _printer_is_assigned(printer):
+            by_role[role] = printer
+
+    for role in _SETTLEMENT_ROLE_PRIORITY:
+        if role in by_role:
+            return role
+    return PrinterRole.COUNTER
 
 
 def items_for_role(

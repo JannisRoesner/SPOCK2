@@ -15,6 +15,7 @@ from spock2.config.models import AppConfig
 from spock2.domain.notes import Note
 from spock2.domain.orders import Order
 from spock2.domain.print_job import PrinterRole, PrintJob, PrintJobStatus, SourceType
+from spock2.domain.settlements import SettlementSlip
 from spock2.persistence import print_jobs
 from spock2.persistence.db import connection
 from spock2.printing.gdi_layout import gdi_layout_profile, profile_uses_gdi
@@ -219,6 +220,12 @@ class PrintWorker(QObject):
                 {k: v for k, v in payload.items() if not k.startswith("_")}
             )
             return self.renderer.format_note(note, profile)
+
+        if job.source_type == SourceType.RIKER_SETTLEMENT:
+            slip = SettlementSlip.model_validate(
+                {k: v for k, v in payload.items() if not k.startswith("_")}
+            )
+            return self.renderer.format_settlement(slip, profile)
 
         # Order
         clean = {k: v for k, v in payload.items() if not k.startswith("_")}

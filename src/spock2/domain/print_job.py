@@ -21,6 +21,7 @@ class PrintJobStatus(StrEnum):
 
 class SourceType(StrEnum):
     RIKER_ORDER = "riker_order"
+    RIKER_SETTLEMENT = "riker_settlement"
     PICARD_NOTE = "picard_note"
     MANUAL_TEST = "manual_test"
 

@@ -12,9 +12,11 @@ from pytest_httpx import HTTPXMock
 from spock2.api.errors import HttpStatusError, TimeoutError, ValidationError
 from spock2.api.riker import RikerClient
 from spock2.domain.orders import Order
+from spock2.domain.settlements import SettlementSlip
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 ORDERS_JSON = FIXTURES / "orders.json"
+SETTLEMENTS_JSON = FIXTURES / "settlements.json"
 BASE_URL = "http://riker.test"
 
 
@@ -116,3 +118,40 @@ def test_test_connection(httpx_mock: HTTPXMock) -> None:
     )
     with RikerClient(BASE_URL) as client:
         assert client.test_connection() is True
+
+
+def test_get_open_settlements_success(httpx_mock: HTTPXMock) -> None:
+    payload = json.loads(SETTLEMENTS_JSON.read_text(encoding="utf-8"))
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/api/settlements?status=open",
+        method="GET",
+        json=payload,
+    )
+    with RikerClient(BASE_URL) as client:
+        slips = client.get_open_settlements()
+    assert len(slips) == 1
+    assert isinstance(slips[0], SettlementSlip)
+    assert slips[0].id == 9
+    assert slips[0].kind == "settlement"
+    assert "ABRECHNUNG" in slips[0].text
+
+
+def test_get_open_settlements_missing_endpoint(httpx_mock: HTTPXMock) -> None:
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/api/settlements?status=open",
+        method="GET",
+        status_code=404,
+        json={"error": "not found"},
+    )
+    with RikerClient(BASE_URL) as client:
+        assert client.get_open_settlements() == []
+
+
+def test_complete_settlement(httpx_mock: HTTPXMock) -> None:
+    httpx_mock.add_response(
+        url=f"{BASE_URL}/api/settlements/9/complete",
+        method="POST",
+        json={"ok": True},
+    )
+    with RikerClient(BASE_URL) as client:
+        client.complete_settlement(9)

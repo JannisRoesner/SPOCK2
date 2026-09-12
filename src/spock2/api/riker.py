@@ -18,6 +18,7 @@ from spock2.api.errors import (
     ValidationError,
 )
 from spock2.domain.orders import Order
+from spock2.domain.settlements import SettlementSlip
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +164,63 @@ class RikerClient:
                 status_code=response.status_code,
             )
         logger.info("Marked RIKER order %s complete", order_id)
+
+    def get_open_settlements(self) -> list[SettlementSlip]:
+        """
+        Fetch open settlement slips from ``GET /api/settlements?status=open``.
+
+        A missing endpoint (older RIKER) yields ``[]`` instead of failing the
+        order poll. Other HTTP/network errors still raise typed errors.
+        """
+        try:
+            response = self._request(
+                "GET", "/api/settlements", params={"status": "open"}
+            )
+        except HttpStatusError as exc:
+            if exc.status_code in {404, 405}:
+                logger.info("RIKER has no settlements endpoint (%s)", exc.status_code)
+                return []
+            raise
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise ValidationError(
+                f"RIKER settlements returned non-JSON body: {exc}",
+                cause=exc,
+            ) from exc
+
+        if not isinstance(payload, list):
+            raise ValidationError(
+                f"RIKER settlements response must be a list, got {type(payload).__name__}"
+            )
+
+        try:
+            slips = [SettlementSlip.model_validate(item) for item in payload]
+        except PydanticValidationError as exc:
+            raise ValidationError(
+                f"RIKER settlement payload failed validation: {exc}",
+                cause=exc,
+            ) from exc
+
+        logger.info("Retrieved %d open settlement slips from RIKER", len(slips))
+        return slips
+
+    def complete_settlement(self, slip_id: int) -> None:
+        """Mark a settlement slip printed via ``POST /api/settlements/:id/complete``."""
+        response = self._request("POST", f"/api/settlements/{slip_id}/complete")
+        try:
+            payload = response.json()
+        except ValueError:
+            logger.info("Marked RIKER settlement %s complete (empty body)", slip_id)
+            return
+
+        if isinstance(payload, dict) and payload.get("ok") is False:
+            raise HttpStatusError(
+                f"RIKER complete rejected for settlement {slip_id}: {payload}",
+                status_code=response.status_code,
+            )
+        logger.info("Marked RIKER settlement %s complete", slip_id)
 
     def test_connection(self) -> bool:
         """

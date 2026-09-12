@@ -86,6 +86,7 @@ def test_admin_collect_keeps_untouched_sections(qapp: QApplication) -> None:
     assert collected.routing.station_role == "counter"
     assert collected.riker.complete_retries == 7
     assert collected.picard.session_id == "42"
+    assert collected.print.auto_print_new_settlements is True
     dlg.close()
 
 

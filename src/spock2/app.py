@@ -35,6 +35,7 @@ from spock2.config.models import AppConfig, apply_config_inplace
 from spock2.domain.notes import Note
 from spock2.domain.orders import Order
 from spock2.domain.print_job import PrintJob, PrintJobStatus, SourceType, utc_now_iso
+from spock2.domain.settlements import SettlementSlip
 from spock2.domain.status import ApiStatus, ConnectionState
 from spock2.logging_setup import setup_logging
 from spock2.persistence import print_jobs
@@ -50,6 +51,7 @@ from spock2.services.connection_monitor import ConnectionMonitor
 from spock2.services.note_service import NoteService
 from spock2.services.order_service import OrderService
 from spock2.services.printer_health import PrinterHealth
+from spock2.services.settlement_service import SettlementService
 from spock2.ui.assets import app_icon
 from spock2.ui.main_window import MainWindow
 from spock2.ui.theme import apply_appearance
@@ -178,6 +180,11 @@ class ApplicationController(QObject):
             on_new_notes=self._on_new_notes,
             parent=self,
         )
+        self.settlement_service = SettlementService(
+            self.riker,
+            on_new_settlements=self._on_new_settlements,
+            parent=self,
+        )
 
         self.order_service.connection_changed.connect(self.monitor.set_riker_status)
         self.note_service.connection_changed.connect(self.monitor.set_picard_status)
@@ -205,6 +212,9 @@ class ApplicationController(QObject):
 
         self.printer_health.statuses_changed.connect(self.window.set_printer_statuses)
         self.order_service.complete_finished.connect(self._on_complete_finished_clear)
+        self.settlement_service.settlements_changed.connect(
+            self._maybe_ack_printed_settlements
+        )
         self._start_workers()
         self._refresh_pending_count()
 
@@ -226,6 +236,9 @@ class ApplicationController(QObject):
         )
         self._poll_worker.moveToThread(poll_thread)
         self._poll_worker.orders_fetched.connect(self.order_service.apply_poll_result)
+        self._poll_worker.settlements_fetched.connect(
+            self.settlement_service.apply_poll_result
+        )
         self._poll_worker.poll_error.connect(self.order_service.apply_poll_error)
         self._poll_worker.status_changed.connect(self._on_poll_status)
         poll_thread.started.connect(self._poll_worker.start_polling)
@@ -407,6 +420,7 @@ class ApplicationController(QObject):
         old_riker = self.riker
         self.riker = create_riker(self.config)
         self.order_service.set_client(self.riker)
+        self.settlement_service.set_client(self.riker)
         if self._poll_worker is not None:
             # Q_ARG(object, ...) ist in PySide6 nicht registriert → RuntimeError.
             # Pending-Attribut + parameterloser Slot mit BlockingQueuedConnection.
@@ -499,10 +513,75 @@ class ApplicationController(QObject):
         self._kick_print_drain()
         self._refresh_pending_count()
 
+    def _on_new_settlements(self, slips: list[SettlementSlip]) -> None:
+        if not self.config.print.auto_print_new_settlements:
+            return
+        for slip in slips:
+            try:
+                ids = self.orchestrator.enqueue_settlement(slip, reprint=False)
+                logger.info(
+                    "event=auto_print_settlement slip_id=%s jobs=%s", slip.id, ids
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "event=auto_print_settlement_failed slip_id=%s", slip.id
+                )
+        self._kick_print_drain()
+        self._refresh_pending_count()
+
+    def _settlement_ready_to_ack(self, slip_id: int) -> bool:
+        """True, wenn der Zettel bereits erfolgreich gedruckt wurde."""
+        try:
+            with db_connection(self.db_path) as conn:
+                jobs = print_jobs.list_for_source(
+                    conn, SourceType.RIKER_SETTLEMENT, str(slip_id)
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "event=settlement_ack_lookup_failed slip_id=%s err=%s", slip_id, exc
+            )
+            return False
+        active = {
+            PrintJobStatus.PENDING,
+            PrintJobStatus.SUBMITTED,
+            PrintJobStatus.PRINTING,
+        }
+        if any(job.status in active for job in jobs):
+            return False
+        return any(job.status == PrintJobStatus.COMPLETED for job in jobs)
+
+    @Slot(object)
+    def _maybe_ack_printed_settlements(self, slips: object) -> None:
+        """Bestätigt auf RIKER nach, wenn der Druck schon durch ist (z. B. nach Restart)."""
+        if not isinstance(slips, list):
+            return
+        for item in slips:
+            slip_id = getattr(item, "id", None)
+            if not isinstance(slip_id, int):
+                continue
+            if self.settlement_service.is_completing(slip_id):
+                continue
+            if self._settlement_ready_to_ack(slip_id):
+                self.settlement_service.complete_slip(slip_id)
+
     @Slot(object)
     def _on_job_updated(self, job: object) -> None:
         self._refresh_pending_count()
         if not isinstance(job, PrintJob):
+            return
+        if (
+            job.source_type == SourceType.RIKER_SETTLEMENT
+            and job.status == PrintJobStatus.COMPLETED
+        ):
+            try:
+                slip_id = int(job.source_id)
+            except ValueError:
+                logger.warning(
+                    "event=settlement_ack_bad_source_id source_id=%s", job.source_id
+                )
+                return
+            logger.info("event=settlement_ack_after_print slip_id=%s", slip_id)
+            self.settlement_service.complete_slip(slip_id)
             return
         if not self.config.print.auto_complete_after_print:
             return
@@ -607,6 +686,7 @@ class ApplicationController(QObject):
 
         self.order_service.shutdown()
         self.note_service.shutdown()
+        self.settlement_service.shutdown()
         with contextlib.suppress(Exception):
             self.riker.close()
         if self.picard is not None:

@@ -20,11 +20,13 @@ class PollWorker(QObject):
 
     Emits:
       - orders_fetched(list[Order])
+      - settlements_fetched(list[SettlementSlip])
       - poll_error(SpockError | Exception)
       - status_changed(ApiStatus)
     """
 
     orders_fetched = Signal(object)
+    settlements_fetched = Signal(object)
     poll_error = Signal(object)
     status_changed = Signal(object)
 
@@ -122,12 +124,23 @@ class PollWorker(QObject):
             self._status.mark_success()
             self.status_changed.emit(self._status.model_copy(deep=True))
             self.orders_fetched.emit(orders)
+            self.settlements_fetched.emit(self._fetch_settlements())
             if self._backoff.reset_on_success:
                 self._backoff.reset()
             if self._running:
                 self._timer.setInterval(max(1, int(self._interval_s * 1000)))
         finally:
             self._in_flight = False
+
+    def _fetch_settlements(self) -> list:
+        """Abrechnungszettel; Fehler lassen den Order-Poll erfolgreich bleiben."""
+        try:
+            return self._client.get_open_settlements()
+        except SpockError as exc:
+            logger.warning("PollWorker: settlement poll failed (%s)", exc)
+        except Exception:  # noqa: BLE001
+            logger.exception("PollWorker: unexpected settlement poll error")
+        return []
 
     def _handle_error(self, exc: BaseException) -> None:
         kind = type(exc).__name__

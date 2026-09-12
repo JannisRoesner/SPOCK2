@@ -259,6 +259,23 @@ def count_failed_since(conn: sqlite3.Connection, since_iso: str) -> int:
     return int(row["c"]) if row else 0
 
 
+def list_for_source(
+    conn: sqlite3.Connection,
+    source_type: SourceType,
+    source_id: str,
+) -> list[PrintJob]:
+    """Alle Jobs einer Quelle, neueste zuerst."""
+    rows = conn.execute(
+        """
+        SELECT * FROM print_jobs
+        WHERE source_type = ? AND source_id = ?
+        ORDER BY id DESC
+        """,
+        (source_type.value, str(source_id)),
+    ).fetchall()
+    return [_row_to_job(r) for r in rows]
+
+
 def find_active_dedupe(
     conn: sqlite3.Connection,
     *,

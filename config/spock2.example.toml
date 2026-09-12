@@ -106,6 +106,8 @@ station_role = "kitchen"
 [print]
 auto_print_new_orders = true
 auto_print_new_notes = true
+# Abrechnungszettel von GET /api/settlements (Thekendrucker, sonst Fallback)
+auto_print_new_settlements = true
 # Druck ≠ Erledigt: kein automatisches Complete nach Druck
 auto_complete_after_print = false
 # Transport: auto (Linux→CUPS, Windows→WinSpool, sonst Datei) | cups | winspool | file

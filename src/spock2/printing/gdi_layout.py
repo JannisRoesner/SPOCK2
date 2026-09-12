@@ -29,6 +29,8 @@ _HEADER_TITLES = frozenset(
         "KLEIN-BON",
         "ZETTEL",
         "SPOCK2 TEST",
+        "RIKER",
+        "ABRECHNUNG",
     }
 )
 

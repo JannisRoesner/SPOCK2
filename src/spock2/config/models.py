@@ -125,6 +125,7 @@ class RoutingConfig(BaseModel):
 class PrintConfig(BaseModel):
     auto_print_new_orders: bool = True
     auto_print_new_notes: bool = True
+    auto_print_new_settlements: bool = True
     auto_complete_after_print: bool = False
     transport: PrintTransportMode = "auto"
     default_copies: int = Field(default=1, ge=1)

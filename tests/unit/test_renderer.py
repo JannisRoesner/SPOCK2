@@ -5,6 +5,7 @@ from __future__ import annotations
 from spock2.domain.notes import Note
 from spock2.domain.orders import Order, OrderItem
 from spock2.domain.print_job import PrinterRole
+from spock2.domain.settlements import SettlementSlip
 from spock2.printing.profiles import get_profile
 from spock2.printing.profiles.pos5890k import POS5890K
 from spock2.printing.profiles.tsp100 import TSP100
@@ -112,6 +113,18 @@ def test_note_zettel_layout() -> None:
     assert "Von: Moderation" in text
     assert "Bitte Tisch 4" in text
     assert "Zeit: 15:00" in text
+
+
+def test_settlement_keeps_riker_text() -> None:
+    slip = SettlementSlip(
+        id=3,
+        text="==========================================\n               ABRECHNUNG\nUmsatz bezahlt                    12,50 EUR",
+    )
+    text = ReceiptRenderer().format_settlement(slip, TSP100)
+    assert "ABRECHNUNG" in text
+    assert "12,50 EUR" in text
+    assert "KÜCHEN-BON" not in text
+    assert text == slip.text
 
 
 def test_tsp100_line_width_42() -> None:

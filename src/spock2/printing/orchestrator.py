@@ -13,6 +13,7 @@ from spock2.config.models import AppConfig
 from spock2.domain.notes import Note
 from spock2.domain.orders import Order
 from spock2.domain.print_job import PrinterRole, PrintJob, SourceType
+from spock2.domain.settlements import SettlementSlip
 from spock2.persistence import print_jobs, printed_sources
 from spock2.persistence.db import connection, migrate
 from spock2.printing.profiles import get_profile
@@ -20,6 +21,7 @@ from spock2.printing.renderer import ReceiptRenderer
 from spock2.printing.routing import (
     items_for_role,
     resolve_role_for_note,
+    resolve_role_for_settlement,
     resolve_roles_for_order,
 )
 from spock2.printing.transport import PrintTransport
@@ -56,6 +58,12 @@ def order_payload(
 
 def note_payload(note: Note, role: PrinterRole) -> dict[str, Any]:
     data = note.model_dump(mode="json")
+    data["_target_role"] = role.value
+    return data
+
+
+def settlement_payload(slip: SettlementSlip, role: PrinterRole) -> dict[str, Any]:
+    data = slip.model_dump(mode="json")
     data["_target_role"] = role.value
     return data
 
@@ -205,6 +213,69 @@ class PrintOrchestrator:
                     conn, SourceType.PICARD_NOTE, note.id
                 )
 
+        return job_ids
+
+    def enqueue_settlement(
+        self, slip: SettlementSlip, *, reprint: bool = False
+    ) -> list[int]:
+        """Enqueued einen Abrechnungszettel (Theke, sonst belegter Fallback-Drucker)."""
+        role = resolve_role_for_settlement(self.config)
+        payload = settlement_payload(slip, role)
+        phash = payload_hash(payload)
+        job_ids: list[int] = []
+        source_id = str(slip.id)
+
+        with connection(self.db_path) as conn:
+            if not reprint and printed_sources.was_auto_enqueued(
+                conn, SourceType.RIKER_SETTLEMENT, source_id
+            ):
+                return []
+
+            if not reprint:
+                existing = print_jobs.find_active_dedupe(
+                    conn,
+                    source_type=SourceType.RIKER_SETTLEMENT,
+                    source_id=source_id,
+                    target_role=role,
+                    payload_hash=phash,
+                )
+                if existing is not None:
+                    printed_sources.mark_auto_enqueued(
+                        conn, SourceType.RIKER_SETTLEMENT, source_id
+                    )
+                    return [existing.id] if existing.id is not None else []
+
+            profile_name = self._profile_for_role(role)
+            job = PrintJob(
+                source_type=SourceType.RIKER_SETTLEMENT,
+                source_id=source_id,
+                target_role=role,
+                profile_name=profile_name,
+                payload_json=canonical_json(payload),
+                payload_hash=phash,
+                is_reprint=reprint,
+            )
+            try:
+                created = print_jobs.create_job(conn, job)
+            except DbError:
+                printed_sources.mark_auto_enqueued(
+                    conn, SourceType.RIKER_SETTLEMENT, source_id
+                )
+                return []
+            if created.id is not None:
+                job_ids.append(created.id)
+            if not reprint:
+                printed_sources.mark_auto_enqueued(
+                    conn, SourceType.RIKER_SETTLEMENT, source_id
+                )
+
+        logger.info(
+            "event=enqueue_settlement slip_id=%s role=%s jobs=%s reprint=%s",
+            slip.id,
+            role.value,
+            job_ids,
+            reprint,
+        )
         return job_ids
 
     def enqueue_test(self, role: PrinterRole | str) -> list[int]:

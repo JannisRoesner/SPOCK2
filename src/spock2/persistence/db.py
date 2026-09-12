@@ -10,12 +10,14 @@ from pathlib import Path
 from spock2.api.errors import DbError
 from spock2.domain.print_job import utc_now_iso
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
-SCHEMA_SQL = """
+_SOURCE_TYPES = "'riker_order','riker_settlement','picard_note','manual_test'"
+
+SCHEMA_SQL = f"""
 CREATE TABLE IF NOT EXISTS print_jobs (
   id            INTEGER PRIMARY KEY,
-  source_type   TEXT NOT NULL CHECK(source_type IN ('riker_order','picard_note','manual_test')),
+  source_type   TEXT NOT NULL CHECK(source_type IN ({_SOURCE_TYPES})),
   source_id     TEXT NOT NULL,
   target_role   TEXT NOT NULL CHECK(target_role IN ('kitchen','counter','small')),
   profile_name  TEXT NOT NULL,
@@ -48,6 +50,32 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
   version INTEGER PRIMARY KEY,
   applied_at TEXT NOT NULL
 );
+"""
+
+MIGRATION_V2_SQL = f"""
+CREATE TABLE print_jobs_v2 (
+  id            INTEGER PRIMARY KEY,
+  source_type   TEXT NOT NULL CHECK(source_type IN ({_SOURCE_TYPES})),
+  source_id     TEXT NOT NULL,
+  target_role   TEXT NOT NULL CHECK(target_role IN ('kitchen','counter','small')),
+  profile_name  TEXT NOT NULL,
+  payload_json  TEXT NOT NULL,
+  payload_hash  TEXT NOT NULL,
+  status        TEXT NOT NULL,
+  attempts      INTEGER NOT NULL DEFAULT 0,
+  cups_job_id   INTEGER,
+  last_error    TEXT,
+  is_reprint    INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL,
+  updated_at    TEXT NOT NULL,
+  completed_at  TEXT
+);
+INSERT INTO print_jobs_v2 SELECT * FROM print_jobs;
+DROP TABLE print_jobs;
+ALTER TABLE print_jobs_v2 RENAME TO print_jobs;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_dedupe_auto
+  ON print_jobs(source_type, source_id, target_role, payload_hash)
+  WHERE is_reprint = 0 AND status NOT IN ('cancelled','failed');
 """
 
 
@@ -100,11 +128,26 @@ def migrate(db_path: str | Path) -> int:
         if version < 1:
             try:
                 conn.executescript(SCHEMA_SQL)
+                now = utc_now_iso()
                 conn.execute(
                     "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
-                    (1, utc_now_iso()),
+                    (1, now),
+                )
+                conn.execute(
+                    "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                    (2, now),
                 )
             except sqlite3.Error as exc:
                 raise DbError("Migration auf Version 1 fehlgeschlagen", cause=exc) from exc
-            version = 1
+            version = 2
+        if version < 2:
+            try:
+                conn.executescript(MIGRATION_V2_SQL)
+                conn.execute(
+                    "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                    (2, utc_now_iso()),
+                )
+            except sqlite3.Error as exc:
+                raise DbError("Migration auf Version 2 fehlgeschlagen", cause=exc) from exc
+            version = 2
         return version
